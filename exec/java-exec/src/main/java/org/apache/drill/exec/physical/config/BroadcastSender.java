@@ -19,7 +19,9 @@
 package org.apache.drill.exec.physical.config;
 
 import java.util.List;
+import java.util.Map;
 
+import com.google.common.collect.Maps;
 import org.apache.drill.exec.physical.base.AbstractSender;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.base.PhysicalVisitor;
@@ -33,14 +35,26 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 @JsonTypeName("broadcast-sender")
 public class BroadcastSender extends AbstractSender {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BroadcastSender.class);
-  private final List<DrillbitEndpoint> destinations;
+  private final Map<Integer, DrillbitEndpoint> destinations;
 
   @JsonCreator
   public BroadcastSender(@JsonProperty("receiver-major-fragment") int oppositeMajorFragmentId,
                          @JsonProperty("child") PhysicalOperator child,
-                         @JsonProperty("destinations") List<DrillbitEndpoint> destinations) {
+                         @JsonProperty("destinations") Map<Integer, DrillbitEndpoint> destinations) {
     super(oppositeMajorFragmentId, child);
     this.destinations = destinations;
+  }
+
+  /**
+   * Creates BroadcastSender which sends data to all minor fragments in receiving major fragment.
+   *
+   * @param oppositeMajorFragmentId
+   * @param child
+   * @param destinations This list should be index-ordered the same as the expected minorFragmentIds for each receiver.
+   */
+  public BroadcastSender(int oppositeMajorFragmentId, PhysicalOperator child, List<DrillbitEndpoint> destinations) {
+    super(oppositeMajorFragmentId, child);
+    this.destinations = getIndexOrderedReceiverEndpoints(destinations);
   }
 
   @Override
@@ -49,7 +63,7 @@ public class BroadcastSender extends AbstractSender {
   }
 
   @Override
-  public List<DrillbitEndpoint> getDestinations() {
+  public Map<Integer, DrillbitEndpoint> getDestinations() {
     return destinations;
   }
 

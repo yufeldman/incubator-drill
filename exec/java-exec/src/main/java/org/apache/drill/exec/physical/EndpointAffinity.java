@@ -26,14 +26,14 @@ public class EndpointAffinity implements Comparable<EndpointAffinity>{
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(EndpointAffinity.class);
 
   private DrillbitEndpoint endpoint;
-  private float affinity = 0.0f;
+  private double affinity = 0.0d;
 
   public EndpointAffinity(DrillbitEndpoint endpoint) {
     super();
     this.endpoint = endpoint;
   }
 
-  public EndpointAffinity(DrillbitEndpoint endpoint, float affinity) {
+  public EndpointAffinity(DrillbitEndpoint endpoint, double affinity) {
     super();
     this.endpoint = endpoint;
     this.affinity = affinity;
@@ -45,17 +45,25 @@ public class EndpointAffinity implements Comparable<EndpointAffinity>{
   public void setEndpoint(DrillbitEndpoint endpoint) {
     this.endpoint = endpoint;
   }
-  public float getAffinity() {
+  public double getAffinity() {
     return affinity;
   }
 
   @Override
   public int compareTo(EndpointAffinity o) {
-    return Float.compare(affinity, o.affinity);
+    return Double.compare(affinity, o.affinity);
   }
 
-  public void addAffinity(float f){
-    affinity += f;
+  public void addAffinity(double f){
+    if (Double.POSITIVE_INFINITY == f) {
+      affinity = f;
+    } else if (Double.POSITIVE_INFINITY != affinity) {
+      affinity += f;
+    }
+  }
+
+  public boolean nodeShouldPresent() {
+    return Double.POSITIVE_INFINITY == affinity;
   }
 
   @Override

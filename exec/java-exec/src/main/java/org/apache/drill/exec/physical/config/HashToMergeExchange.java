@@ -53,12 +53,6 @@ public class HashToMergeExchange extends AbstractExchange{
   }
 
   @Override
-  public int getMaxSendWidth() {
-    return Integer.MAX_VALUE;
-  }
-
-
-  @Override
   protected void setupSenders(List<DrillbitEndpoint> senderLocations) {
     this.senderLocations = senderLocations;
   }

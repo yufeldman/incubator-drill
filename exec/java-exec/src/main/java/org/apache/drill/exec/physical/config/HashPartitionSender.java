@@ -18,7 +18,9 @@
 package org.apache.drill.exec.physical.config;
 
 import java.util.List;
+import java.util.Map;
 
+import com.google.common.collect.Maps;
 import org.apache.drill.common.expression.LogicalExpression;
 import org.apache.drill.exec.physical.base.AbstractSender;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
@@ -34,21 +36,38 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 public class HashPartitionSender extends AbstractSender {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(HashPartitionSender.class);
 
-  private final List<DrillbitEndpoint> endpoints;
+  private final Map<Integer, DrillbitEndpoint> endpoints;
   private final LogicalExpression expr;
+
+  /**
+   * Creates HashPartitionSender which sends data to all minor fragments in receiving major fragment.
+   *
+   * @param oppositeMajorFragmentId
+   * @param child
+   * @param expr
+   * @param endpoints This list should be index-ordered the same as the expected minorFragmentIds for each receiver.
+   */
+  public HashPartitionSender(int oppositeMajorFragmentId,
+                             PhysicalOperator child,
+                             LogicalExpression expr,
+                             List<DrillbitEndpoint> endpoints) {
+    super(oppositeMajorFragmentId, child);
+    this.expr = expr;
+    this.endpoints = getIndexOrderedReceiverEndpoints(endpoints);
+  }
 
   @JsonCreator
   public HashPartitionSender(@JsonProperty("receiver-major-fragment") int oppositeMajorFragmentId,
                              @JsonProperty("child") PhysicalOperator child,
                              @JsonProperty("expr") LogicalExpression expr,
-                             @JsonProperty("destinations") List<DrillbitEndpoint> endpoints) {
+                             @JsonProperty("destinations") Map<Integer, DrillbitEndpoint> endpoints) {
     super(oppositeMajorFragmentId, child);
     this.expr = expr;
     this.endpoints = endpoints;
   }
 
   @Override
-  public List<DrillbitEndpoint> getDestinations() {
+  public Map<Integer, DrillbitEndpoint> getDestinations() {
     return endpoints;
   }
 

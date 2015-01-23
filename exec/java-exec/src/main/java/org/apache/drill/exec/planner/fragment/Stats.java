@@ -19,31 +19,32 @@ package org.apache.drill.exec.planner.fragment;
 
 
 public class Stats {
-  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(Stats.class);
 
-  private int maxWidth = Integer.MAX_VALUE;
+  private ParallelizationInfo parallelizationInfo;
   private double totalCost;
 
-  public void addMaxWidth(int maxWidth){
-    this.maxWidth = Math.min(this.maxWidth, maxWidth);
+  public void addParallelizationInfo(ParallelizationInfo parallelizationInfo) {
+    if (this.parallelizationInfo == null) {
+      this.parallelizationInfo = parallelizationInfo.clone();
+    } else {
+      this.parallelizationInfo.add(parallelizationInfo);
+    }
   }
 
   public void addCost(double cost){
     totalCost += cost;
   }
 
-  public int getMaxWidth() {
-    return maxWidth;
+  public ParallelizationInfo getParallelizationInfo() {
+    return parallelizationInfo;
   }
 
   @Override
   public String toString() {
-    return "Stats [maxWidth=" + maxWidth + ", totalCost=" + totalCost + "]";
+    return "Stats [totalCost=" + totalCost +", parallelizationInfo=" + parallelizationInfo + "]";
   }
 
   public double getTotalCost(){
     return totalCost;
   }
-
-
 }

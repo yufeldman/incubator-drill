@@ -17,14 +17,8 @@
  */
 package org.apache.drill.exec.planner.fragment;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 
-import org.apache.drill.exec.physical.EndpointAffinity;
 import org.apache.drill.exec.physical.PhysicalOperatorSetupException;
 import org.apache.drill.exec.physical.base.AbstractPhysicalVisitor;
 import org.apache.drill.exec.physical.base.Exchange;
@@ -36,9 +30,7 @@ import org.apache.drill.exec.planner.fragment.Fragment.ExchangeFragmentPair;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 
 /**
  * A wrapping class that allows us to add additional information to each fragment node for planning purposes.
@@ -50,10 +42,12 @@ public class Wrapper {
   private final int majorFragmentId;
   private int width = -1;
   private final Stats stats;
-  private boolean endpointsAssigned;
-  private Map<DrillbitEndpoint, EndpointAffinity> endpointAffinityMap = Maps.newHashMap();
+  private boolean endpointsAssigned = false;
   private long initialAllocation = 0;
   private long maxAllocation = 0;
+
+  // List of fragments this particular fragment depends on for determining the parallelization.
+  private List<Wrapper> fragmentDependencies = Lists.newArrayList();
 
   // a list of assigned endpoints. Technically, there could repeated endpoints in this list if we'd like to assign the
   // same fragment multiple times to the same endpoint.
@@ -72,25 +66,6 @@ public class Wrapper {
   public void resetAllocation() {
     initialAllocation = 0;
     maxAllocation = 0;
-  }
-
-  public void addEndpointAffinity(List<EndpointAffinity> affinities){
-    Preconditions.checkState(!endpointsAssigned);
-    for(EndpointAffinity ea : affinities){
-      addEndpointAffinity(ea.getEndpoint(), ea.getAffinity());
-    }
-  }
-
-  public void addEndpointAffinity(DrillbitEndpoint endpoint, float affinity) {
-    Preconditions.checkState(!endpointsAssigned);
-    Preconditions.checkNotNull(endpoint);
-    EndpointAffinity ea = endpointAffinityMap.get(endpoint);
-    if (ea == null) {
-      ea = new EndpointAffinity(endpoint);
-      endpointAffinityMap.put(endpoint, ea);
-    }
-
-    ea.addAffinity(affinity);
   }
 
   public int getMajorFragmentId() {
@@ -160,34 +135,12 @@ public class Wrapper {
 
   }
 
-  public void assignEndpoints(Collection<DrillbitEndpoint> allEndpoints, double affinityFactor) throws PhysicalOperatorSetupException {
+  public void assignEndpoints(List<DrillbitEndpoint> assignedEndpoints) throws
+      PhysicalOperatorSetupException {
     Preconditions.checkState(!endpointsAssigned);
     endpointsAssigned = true;
 
-    if (endpointAffinityMap.size() > 0) {
-      List<EndpointAffinity> affinedEPs = Lists.newArrayList(endpointAffinityMap.values());
-      // get nodes with highest affinity.
-      Collections.sort(affinedEPs);
-      Iterator<EndpointAffinity> affinedEPItr = Iterators.cycle(Lists.reverse(affinedEPs));
-      /** Maximum number of slots which should go to endpoints with affinity */
-      int affinedSlots = Math.min((Math.max(1, (int) (affinityFactor*width/allEndpoints.size())) * affinedEPs.size()), width);
-      while(endpoints.size() < affinedSlots) {
-        EndpointAffinity ea = affinedEPItr.next();
-        DrillbitEndpoint endpoint = ea.getEndpoint();
-        endpoints.add(endpoint);
-      }
-    }
-    // add other endpoints if required
-    if (endpoints.size() < width) {
-      List<DrillbitEndpoint> all = Lists.newArrayList(allEndpoints);
-      all.removeAll(endpointAffinityMap.keySet());
-      // round robin with random start.
-      Collections.shuffle(all, ThreadLocalRandom.current());
-      Iterator<DrillbitEndpoint> otherEPItr = Iterators.cycle(all.size() > 0 ? all : endpointAffinityMap.keySet());
-      while (endpoints.size() < width) {
-        endpoints.add(otherEPItr.next());
-      }
-    }
+    endpoints.addAll(assignedEndpoints);
 
     // Set scan and store endpoints.
     AssignEndpointsToScanAndStore visitor = new AssignEndpointsToScanAndStore();
@@ -209,9 +162,30 @@ public class Wrapper {
     return "FragmentWrapper [majorFragmentId=" + majorFragmentId + ", width=" + width + ", stats=" + stats + "]";
   }
 
+  public List<DrillbitEndpoint> getAssignedEndpoints() {
+    Preconditions.checkState(endpointsAssigned);
+    return endpoints;
+  }
+
   public DrillbitEndpoint getAssignedEndpoint(int minorFragmentId) {
     Preconditions.checkState(endpointsAssigned);
     return this.endpoints.get(minorFragmentId);
   }
 
+  /**
+   * Add a parallelization dependency on given fragment.
+   *
+   * @param dependsOn
+   */
+  public void addFragmentDependency(Wrapper dependsOn) {
+    fragmentDependencies.add(dependsOn);
+  }
+
+  public boolean isParallelized() {
+    return endpointsAssigned;
+  }
+
+  public List<Wrapper> getFragmentDependencies() {
+    return fragmentDependencies;
+  }
 }

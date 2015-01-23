@@ -18,7 +18,11 @@
 package org.apache.drill.exec.physical.base;
 
 
+import com.google.common.collect.Maps;
+import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
+import java.util.List;
+import java.util.Map;
 
 public abstract class AbstractSender extends AbstractSingle implements Sender {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AbstractSender.class);
@@ -40,5 +44,19 @@ public abstract class AbstractSender extends AbstractSingle implements Sender {
     return oppositeMajorFragmentId;
   }
 
+  /**
+   * Helper method to create a mapping of fragment id and endpoint where it is running for a given endpoints
+   * assignments of opposite major fragment.
+   *
+   * @param endpoints
+   * @return
+   */
+  protected static Map<Integer, DrillbitEndpoint> getIndexOrderedReceiverEndpoints(List<DrillbitEndpoint> endpoints) {
+    Map<Integer, DrillbitEndpoint> destinations = Maps.newHashMap();
+    for(int i=0; i<endpoints.size(); i++) {
+      destinations.put(i, endpoints.get(i));
+    }
 
+    return destinations;
+  }
 }

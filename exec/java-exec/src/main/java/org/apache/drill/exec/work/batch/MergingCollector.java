@@ -17,6 +17,7 @@
  */
 package org.apache.drill.exec.work.batch;
 
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.drill.exec.ops.FragmentContext;
@@ -27,12 +28,11 @@ public class MergingCollector extends AbstractDataCollector{
   private AtomicInteger streamsRunning;
 
   public MergingCollector(AtomicInteger parentAccounter, Receiver receiver, FragmentContext context) {
-    super(parentAccounter, receiver, 1, context);
-    streamsRunning = new AtomicInteger(receiver.getProvidingEndpoints().size());
+    super(parentAccounter, receiver, Collections.singleton(0), context);
   }
 
   @Override
   protected RawBatchBuffer getBuffer(int minorFragmentId) {
-    return buffers[0];
+    return buffers.get(0);
   }
 }

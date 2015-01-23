@@ -18,7 +18,9 @@
 package org.apache.drill.exec.physical.config;
 
 import java.util.List;
+import java.util.Map;
 
+import com.google.common.collect.Maps;
 import org.apache.drill.exec.physical.base.AbstractReceiver;
 import org.apache.drill.exec.physical.base.PhysicalVisitor;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
@@ -33,18 +35,31 @@ import com.fasterxml.jackson.annotation.JsonTypeName;
 public class UnorderedReceiver extends AbstractReceiver{
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(UnorderedReceiver.class);
 
-  private List<DrillbitEndpoint> senders;
+  private Map<Integer, DrillbitEndpoint> senders;
+
+  /**
+   * Creates UnorderedReceiver which expects data from all minor fragments in sending major fragment.
+   * @param oppositeMajorFragmentId
+   * @param senders This list should be index-ordered the same as the expected minorFragmentIds for each sender.
+   */
+  public UnorderedReceiver(int oppositeMajorFragmentId, List<DrillbitEndpoint> senders) {
+    super(oppositeMajorFragmentId);
+    this.senders = Maps.newHashMap();
+    for(int i=0; i<senders.size(); i++) {
+      this.senders.put(i, senders.get(i));
+    }
+  }
 
   @JsonCreator
   public UnorderedReceiver(@JsonProperty("sender-major-fragment") int oppositeMajorFragmentId,
-                        @JsonProperty("senders") List<DrillbitEndpoint> senders) {
+                           @JsonProperty("senders") Map<Integer, DrillbitEndpoint> senders) {
     super(oppositeMajorFragmentId);
     this.senders = senders;
   }
 
   @Override
   @JsonProperty("senders")
-  public List<DrillbitEndpoint> getProvidingEndpoints() {
+  public Map<Integer, DrillbitEndpoint> getProvidingEndpoints() {
     return senders;
   }
 

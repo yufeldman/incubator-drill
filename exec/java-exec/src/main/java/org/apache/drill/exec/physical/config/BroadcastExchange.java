@@ -66,9 +66,4 @@ public class BroadcastExchange extends AbstractExchange {
   public Receiver getReceiver(int minorFragmentId) {
     return new UnorderedReceiver(senderMajorFragmentId, senderLocations);
   }
-
-  @Override
-  public int getMaxSendWidth() {
-    return Integer.MAX_VALUE;
-  }
 }

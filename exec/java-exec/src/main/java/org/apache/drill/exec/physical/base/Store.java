@@ -20,6 +20,7 @@ package org.apache.drill.exec.physical.base;
 import java.util.List;
 
 import org.apache.drill.exec.physical.PhysicalOperatorSetupException;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -29,7 +30,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  * layers, a Store node is actually an outputting node (rather than a root node) that provides returns one or more
  * records regarding the completion of the query.
  */
-public interface Store extends HasAffinity {
+public interface Store extends PhysicalOperator {
 
   /**
    * Inform the Store node about the actual decided DrillbitEndpoint assignments desired for storage purposes. This is a
@@ -56,15 +57,17 @@ public interface Store extends HasAffinity {
       throws PhysicalOperatorSetupException;
 
   /**
-   * The maximum allowable width for the Store operation. In some cases, a store operation has a limited number of
-   * parallelizations that it can support. For example, a Screen return cannot be parallelized at all. In this case, a
-   * maxWidth value of 1 will be returned. In the case that there is no limit for parallelization, this method should
-   * return Integer.MAX_VALUE.
+   * Returns parallelization info for the Store operation. In some cases, a store operation has a limited number of
+   * parallelizations that it can support and affinity to certain nodes.
+   *
+   * For example, a Screen return cannot be parallelized at all and can only run on node where Foreman for the query is
+   * present. In this case, parallelization info includes minWidth and maxWidth value of 1 and affinity to the node
+   * where Foreman is present.
    *
    * @return
    */
   @JsonIgnore
-  public abstract int getMaxWidth();
+  public abstract ParallelizationInfo getParallelizationInfo();
 
   /**
    * Get the child of this store operator as this will be needed for parallelization materialization purposes.

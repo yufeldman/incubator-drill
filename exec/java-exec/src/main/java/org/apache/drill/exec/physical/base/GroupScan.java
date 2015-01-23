@@ -22,7 +22,9 @@ import java.util.List;
 import com.google.common.collect.ImmutableList;
 import org.apache.drill.common.exceptions.ExecutionSetupException;
 import org.apache.drill.common.expression.SchemaPath;
+import org.apache.drill.exec.physical.EndpointAffinity;
 import org.apache.drill.exec.physical.PhysicalOperatorSetupException;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -32,7 +34,7 @@ import com.google.common.collect.Lists;
  * A GroupScan operator represents all data which will be scanned by a given physical
  * plan.  It is the superset of all SubScans for the plan.
  */
-public interface GroupScan extends Scan, HasAffinity{
+public interface GroupScan extends Scan {
 
   public static final List<SchemaPath> ALL_COLUMNS = ImmutableList.of(SchemaPath.getSimplePath("*"));
   public static final long NO_COLUMN_STATS = -1;
@@ -41,6 +43,29 @@ public interface GroupScan extends Scan, HasAffinity{
 
   public abstract SubScan getSpecificScan(int minorFragmentId) throws ExecutionSetupException;
 
+  /**
+   * Get parallelization info of the GroupScan. GroupScan can enforce parallelization width (min and max) and affinity
+   * to certain Drillbit endpoints.
+   *
+   * @return
+   */
+  @JsonIgnore
+  public ParallelizationInfo getParallelizationInfo();
+
+  /**
+   * Get the list of Endpoints with associated affinities that this operator has preference for.
+   * @return List of EndpointAffinity objects.
+   */
+  @JsonIgnore
+  public List<EndpointAffinity> getOperatorAffinity();
+
+  @JsonIgnore
+  public int getMinParallelizationWidth();
+
+  /**
+   * Maximum parallelization width supported by the GroupScan.
+   * @return
+   */
   @JsonIgnore
   public int getMaxParallelizationWidth();
 

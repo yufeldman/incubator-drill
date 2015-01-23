@@ -19,6 +19,7 @@ package org.apache.drill.exec.physical.impl.partitionsender;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
@@ -287,17 +288,18 @@ public class PartitionSenderRootExec extends BaseRootExec {
 
   public void sendEmptyBatch() {
     FragmentHandle handle = context.getHandle();
-    int fieldId = 0;
     StatusHandler statusHandler = new StatusHandler(sendCount, context);
-    for (DrillbitEndpoint endpoint : popConfig.getDestinations()) {
-      FragmentHandle opposite = context.getHandle().toBuilder().setMajorFragmentId(popConfig.getOppositeMajorFragmentId()).setMinorFragmentId(fieldId).build();
-      DataTunnel tunnel = context.getDataTunnel(endpoint, opposite);
+    for (Entry<Integer, DrillbitEndpoint> endpoint : popConfig.getDestinations().entrySet()) {
+      FragmentHandle opposite = context.getHandle().toBuilder()
+          .setMajorFragmentId(popConfig.getOppositeMajorFragmentId())
+          .setMinorFragmentId(endpoint.getKey()).build();
+      DataTunnel tunnel = context.getDataTunnel(endpoint.getValue(), opposite);
       FragmentWritableBatch writableBatch = FragmentWritableBatch.getEmptyLastWithSchema(
               handle.getQueryId(),
               handle.getMajorFragmentId(),
               handle.getMinorFragmentId(),
               operator.getOppositeMajorFragmentId(),
-              fieldId,
+              endpoint.getKey(),
               incoming.getSchema());
       stats.startWait();
       try {
@@ -306,7 +308,6 @@ public class PartitionSenderRootExec extends BaseRootExec {
         stats.stopWait();
       }
       this.sendCount.increment();
-      fieldId++;
     }
   }
 

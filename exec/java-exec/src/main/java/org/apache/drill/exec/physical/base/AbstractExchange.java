@@ -20,6 +20,7 @@ package org.apache.drill.exec.physical.base;
 import java.util.List;
 
 import org.apache.drill.exec.physical.PhysicalOperatorSetupException;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 public abstract class AbstractExchange extends AbstractSingle implements Exchange {
@@ -41,9 +42,24 @@ public abstract class AbstractExchange extends AbstractSingle implements Exchang
     return false;
   }
 
+  /**
+   * Default sender parallelization width is range [1, Integer.MAX_VALUE] and no endpoint affinity
+   * @param receiverFragmentEndpoints Endpoints assigned to receiver fragment if available, otherwise an empty list.
+   * @return
+   */
   @Override
-  public int getMaxReceiveWidth() {
-    return Integer.MAX_VALUE;
+  public ParallelizationInfo getSenderParallelizationInfo(List<DrillbitEndpoint> receiverFragmentEndpoints) {
+    return ParallelizationInfo.create(1, Integer.MAX_VALUE);
+  }
+
+  /**
+   * Default receiver parallelization width is range [1, Integer.MAX_VALUE] and no endpoint affinity
+   * @param senderFragmentEndpoints Endpoints assigned to receiver fragment if available, otherwise an empty list.
+   * @return
+   */
+  @Override
+  public ParallelizationInfo getReceiverParallelizationInfo(List<DrillbitEndpoint> senderFragmentEndpoints) {
+    return ParallelizationInfo.create(1, Integer.MAX_VALUE);
   }
 
   protected abstract void setupSenders(List<DrillbitEndpoint> senderLocations) throws PhysicalOperatorSetupException ;
@@ -72,5 +88,8 @@ public abstract class AbstractExchange extends AbstractSingle implements Exchang
     throw new UnsupportedOperationException();
   }
 
-
+  @Override
+  public ExchangeAffinity getAffinity() {
+    return ExchangeAffinity.NO_AFFINITY;
+  }
 }

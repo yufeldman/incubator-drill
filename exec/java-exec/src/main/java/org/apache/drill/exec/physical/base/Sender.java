@@ -17,7 +17,7 @@
  */
 package org.apache.drill.exec.physical.base;
 
-import java.util.List;
+import java.util.Map;
 
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
@@ -31,9 +31,9 @@ public interface Sender extends FragmentRoot {
 
   /**
    * Get the list of destination endpoints that this Sender will be communicating with.
-   * @return List of DrillbitEndpoints.
+   * @return Map of receiving minor fragment id and Drillbit endpoint where it is running
    */
-  public abstract List<DrillbitEndpoint> getDestinations();
+  public abstract Map<Integer, DrillbitEndpoint> getDestinations();
 
   /**
    * Get the receiver major fragment id that is opposite this sender.

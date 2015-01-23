@@ -17,9 +17,12 @@
  ******************************************************************************/
 package org.apache.drill.exec.physical.impl.broadcastsender;
 
+import com.google.common.collect.Maps;
 import io.netty.buffer.ByteBuf;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.exception.SchemaChangeException;
@@ -52,7 +55,7 @@ public class BroadcastSenderRootExec extends BaseRootExec {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BroadcastSenderRootExec.class);
   private final FragmentContext context;
   private final BroadcastSender config;
-  private final DataTunnel[] tunnels;
+  private final Map<Integer, DataTunnel> tunnels; // Map of receiving minor fragment Id to DataTunnel
   private final ExecProtos.FragmentHandle handle;
   private volatile boolean ok;
   private final RecordBatch incoming;
@@ -76,11 +79,14 @@ public class BroadcastSenderRootExec extends BaseRootExec {
     this.incoming = incoming;
     this.config = config;
     this.handle = context.getHandle();
-    List<DrillbitEndpoint> destinations = config.getDestinations();
-    this.tunnels = new DataTunnel[destinations.size()];
-    for(int i = 0; i < destinations.size(); ++i) {
-      FragmentHandle opp = handle.toBuilder().setMajorFragmentId(config.getOppositeMajorFragmentId()).setMinorFragmentId(i).build();
-      tunnels[i] = context.getDataTunnel(destinations.get(i), opp);
+    Map<Integer, DrillbitEndpoint> destinations = config.getDestinations();
+    this.tunnels = Maps.newHashMap();
+    for(Entry<Integer, DrillbitEndpoint> destination : destinations.entrySet()) {
+      FragmentHandle opp = handle.toBuilder()
+          .setMajorFragmentId(config.getOppositeMajorFragmentId())
+          .setMinorFragmentId(destination.getKey())
+          .build();
+      tunnels.put(destination.getKey(), context.getDataTunnel(destination.getValue(), opp));
     }
   }
 
@@ -96,11 +102,16 @@ public class BroadcastSenderRootExec extends BaseRootExec {
     switch(out){
       case STOP:
       case NONE:
-        for (int i = 0; i < tunnels.length; ++i) {
-          FragmentWritableBatch b2 = FragmentWritableBatch.getEmptyLast(handle.getQueryId(), handle.getMajorFragmentId(), handle.getMinorFragmentId(), config.getOppositeMajorFragmentId(), i);
+        for (Entry<Integer, DataTunnel> tunnel : tunnels.entrySet()) {
+          FragmentWritableBatch b2 = FragmentWritableBatch.getEmptyLast(
+              handle.getQueryId(),
+              handle.getMajorFragmentId(),
+              handle.getMinorFragmentId(),
+              config.getOppositeMajorFragmentId(),
+              tunnel.getKey());
           stats.startWait();
           try {
-            tunnels[i].sendRecordBatch(this.statusHandler, b2);
+            tunnel.getValue().sendRecordBatch(this.statusHandler, b2);
           } finally {
             stats.stopWait();
           }
@@ -112,15 +123,22 @@ public class BroadcastSenderRootExec extends BaseRootExec {
       case OK_NEW_SCHEMA:
       case OK:
         WritableBatch writableBatch = incoming.getWritableBatch();
-        if (tunnels.length > 1) {
-          writableBatch.retainBuffers(tunnels.length - 1);
+        if (tunnels.size() > 1) {
+          writableBatch.retainBuffers(tunnels.size() - 1);
         }
-        for (int i = 0; i < tunnels.length; ++i) {
-          FragmentWritableBatch batch = new FragmentWritableBatch(false, handle.getQueryId(), handle.getMajorFragmentId(), handle.getMinorFragmentId(), config.getOppositeMajorFragmentId(), i, writableBatch);
+        for (Entry<Integer, DataTunnel> tunnel : tunnels.entrySet()) {
+          FragmentWritableBatch batch = new FragmentWritableBatch(
+              false,
+              handle.getQueryId(),
+              handle.getMajorFragmentId(),
+              handle.getMinorFragmentId(),
+              config.getOppositeMajorFragmentId(),
+              tunnel.getKey(),
+              writableBatch);
           updateStats(batch);
           stats.startWait();
           try {
-            tunnels[i].sendRecordBatch(this.statusHandler, batch);
+            tunnel.getValue().sendRecordBatch(this.statusHandler, batch);
           } finally {
             stats.stopWait();
           }
@@ -136,7 +154,7 @@ public class BroadcastSenderRootExec extends BaseRootExec {
   }
 
   public void updateStats(FragmentWritableBatch writableBatch) {
-    stats.setLongStat(Metric.N_RECEIVERS, tunnels.length);
+    stats.setLongStat(Metric.N_RECEIVERS, tunnels.size());
     stats.addLongStat(Metric.BYTES_SENT, writableBatch.getByteCount());
   }
 

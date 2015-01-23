@@ -21,9 +21,12 @@ import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
+import com.google.common.collect.Maps;
 import org.apache.drill.exec.ExecConstants;
 import org.apache.drill.exec.ops.FragmentContext;
 import org.apache.drill.exec.physical.base.Receiver;
@@ -34,31 +37,37 @@ import com.google.common.base.Preconditions;
 
 public abstract class AbstractDataCollector implements DataCollector{
 
-  private final List<DrillbitEndpoint> incoming;
+  private final Map<Integer, DrillbitEndpoint> incoming;
   private final int oppositeMajorFragmentId;
-  private final AtomicIntegerArray remainders;
+  private final Map<Integer, AtomicInteger> remainders;
   private final AtomicInteger remainingRequired;
-  protected final RawBatchBuffer[] buffers;
+  protected final Map<Integer, RawBatchBuffer> buffers;
   private final AtomicInteger parentAccounter;
   private final AtomicInteger finishedStreams = new AtomicInteger();
   private final FragmentContext context;
 
-  public AbstractDataCollector(AtomicInteger parentAccounter, Receiver receiver, int minInputsRequired, FragmentContext context) {
-    Preconditions.checkArgument(minInputsRequired > 0);
+  public AbstractDataCollector(AtomicInteger parentAccounter, Receiver receiver, Set<Integer> fragmentIds,
+      FragmentContext context) {
+    Preconditions.checkArgument(fragmentIds.size() > 0);
     Preconditions.checkNotNull(receiver);
     Preconditions.checkNotNull(parentAccounter);
 
     this.parentAccounter = parentAccounter;
     this.incoming = receiver.getProvidingEndpoints();
-    this.remainders = new AtomicIntegerArray(incoming.size());
+    this.remainders = Maps.newHashMap();
+    for(Integer id : incoming.keySet()) {
+      remainders.put(id, new AtomicInteger());
+    }
     this.oppositeMajorFragmentId = receiver.getOppositeMajorFragmentId();
-    this.buffers = new RawBatchBuffer[minInputsRequired];
+    this.buffers = Maps.newHashMap();
     this.context = context;
     try {
       String bufferClassName = context.getConfig().getString(ExecConstants.INCOMING_BUFFER_IMPL);
       Constructor<?> bufferConstructor = Class.forName(bufferClassName).getConstructor(FragmentContext.class, int.class);
-      for(int i = 0; i < buffers.length; i++) {
-          buffers[i] = (RawBatchBuffer) bufferConstructor.newInstance(context, receiver.supportsOutOfOrderExchange() ? incoming.size() : 1);
+      for(Integer fragmentId : fragmentIds) {
+        buffers.put(fragmentId,
+            (RawBatchBuffer) bufferConstructor.newInstance(
+            context, receiver.supportsOutOfOrderExchange() ? incoming.size() : 1));
       }
     } catch (InstantiationException | IllegalAccessException | InvocationTargetException |
             NoSuchMethodException | ClassNotFoundException e) {
@@ -67,7 +76,7 @@ public abstract class AbstractDataCollector implements DataCollector{
     if (receiver.supportsOutOfOrderExchange()) {
       this.remainingRequired = new AtomicInteger(1);
     } else {
-      this.remainingRequired = new AtomicInteger(minInputsRequired);
+      this.remainingRequired = new AtomicInteger(fragmentIds.size());
     }
   }
 
@@ -75,7 +84,7 @@ public abstract class AbstractDataCollector implements DataCollector{
     return oppositeMajorFragmentId;
   }
 
-  public RawBatchBuffer[] getBuffers(){
+  public Map<Integer, RawBatchBuffer> getBuffers(){
     return buffers;
   }
 
@@ -84,14 +93,14 @@ public abstract class AbstractDataCollector implements DataCollector{
 
     // if we received an out of memory, add an item to all the buffer queues.
     if (batch.getHeader().getIsOutOfMemory()) {
-      for (RawBatchBuffer buffer : buffers) {
+      for (RawBatchBuffer buffer : buffers.values()) {
         buffer.enqueue(batch);
       }
     }
 
     // check to see if we have enough fragments reporting to proceed.
     boolean decremented = false;
-    if (remainders.compareAndSet(minorFragmentId, 0, 1)) {
+    if (remainders.get(minorFragmentId).compareAndSet(0, 1)) {
       int rem = remainingRequired.decrementAndGet();
       if (rem == 0) {
         parentAccounter.decrementAndGet();

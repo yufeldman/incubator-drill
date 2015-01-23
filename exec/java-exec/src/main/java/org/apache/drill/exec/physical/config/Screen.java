@@ -26,6 +26,7 @@ import org.apache.drill.exec.physical.base.AbstractStore;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.base.PhysicalVisitor;
 import org.apache.drill.exec.physical.base.Store;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 import org.apache.drill.exec.proto.UserBitShared.CoreOperatorType;
 
@@ -47,13 +48,9 @@ public class Screen extends AbstractStore {
   }
 
   @Override
-  public List<EndpointAffinity> getOperatorAffinity() {
-    return Collections.singletonList(new EndpointAffinity(endpoint, 1000000000000l));
-  }
-
-  @Override
-  public int getMaxWidth() {
-    return 1;
+  public ParallelizationInfo getParallelizationInfo() {
+    return ParallelizationInfo.create(1, 1,
+        Collections.singletonList(new EndpointAffinity(endpoint, Double.POSITIVE_INFINITY)));
   }
 
   @Override

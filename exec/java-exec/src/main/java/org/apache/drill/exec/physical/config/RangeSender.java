@@ -18,6 +18,7 @@
 package org.apache.drill.exec.physical.config;
 
 import java.util.List;
+import java.util.Map;
 
 import org.apache.drill.exec.physical.base.AbstractSender;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
@@ -42,10 +43,9 @@ public class RangeSender extends AbstractSender{
   }
 
   @Override
-  public List<DrillbitEndpoint> getDestinations() {
+  public Map<Integer, DrillbitEndpoint> getDestinations() {
     return null;
   }
-
 
   @Override
   protected PhysicalOperator getNewWithChild(PhysicalOperator child) {

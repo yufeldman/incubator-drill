@@ -26,11 +26,13 @@ import org.apache.drill.exec.physical.base.AbstractExchange;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.base.Receiver;
 import org.apache.drill.exec.physical.base.Sender;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonTypeName;
+import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 @JsonTypeName("single-merge-exchange")
 public class SingleMergeExchange extends AbstractExchange {
@@ -50,13 +52,8 @@ public class SingleMergeExchange extends AbstractExchange {
   }
 
   @Override
-  public int getMaxSendWidth() {
-    return Integer.MAX_VALUE;
-  }
-
-  @Override
-  public int getMaxReceiveWidth() {
-    return 1;
+  public ParallelizationInfo getReceiverParallelizationInfo(List<DrillbitEndpoint> senderFragmentEndpoints) {
+    return ParallelizationInfo.create(1, 1);
   }
 
   @Override

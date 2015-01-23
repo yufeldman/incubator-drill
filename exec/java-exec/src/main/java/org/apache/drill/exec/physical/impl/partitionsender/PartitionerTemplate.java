@@ -20,6 +20,7 @@ package org.apache.drill.exec.physical.impl.partitionsender;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map.Entry;
 
 import javax.inject.Named;
 
@@ -86,12 +87,13 @@ public abstract class PartitionerTemplate implements Partitioner {
     this.incoming = incoming;
     doSetup(context, incoming, null);
 
-    int fieldId = 0;
-    for (DrillbitEndpoint endpoint : popConfig.getDestinations()) {
-      FragmentHandle opposite = context.getHandle().toBuilder().setMajorFragmentId(popConfig.getOppositeMajorFragmentId()).setMinorFragmentId(fieldId).build();
+    for (Entry<Integer, DrillbitEndpoint> endpoint : popConfig.getDestinations().entrySet()) {
+      FragmentHandle opposite = context.getHandle().toBuilder()
+          .setMajorFragmentId(popConfig.getOppositeMajorFragmentId())
+          .setMinorFragmentId(endpoint.getKey()).build();
       outgoingBatches.add(new OutgoingRecordBatch(stats, sendingAccountor, popConfig,
-          context.getDataTunnel(endpoint, opposite), context, oContext.getAllocator(), fieldId, statusHandler));
-      fieldId++;
+          context.getDataTunnel(endpoint.getValue(), opposite), context, oContext.getAllocator(), endpoint.getKey(),
+          statusHandler));
     }
 
     for (OutgoingRecordBatch outgoingRecordBatch : outgoingBatches) {

@@ -24,6 +24,7 @@ import org.apache.drill.exec.physical.EndpointAffinity;
 import org.apache.drill.exec.physical.base.AbstractStore;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.base.Store;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -39,13 +40,9 @@ public class MockStorePOP extends AbstractStore {
     super(child);
   }
 
-  public int getMaxWidth() {
-    return 1;
-  }
-
   @Override
-  public List<EndpointAffinity> getOperatorAffinity() {
-    return Collections.emptyList();
+  public ParallelizationInfo getParallelizationInfo() {
+    return ParallelizationInfo.create(1, 1);
   }
 
   @Override

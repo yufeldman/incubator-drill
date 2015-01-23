@@ -24,6 +24,7 @@ import org.apache.drill.exec.physical.base.AbstractExchange;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.base.Receiver;
 import org.apache.drill.exec.physical.base.Sender;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -39,6 +40,11 @@ public class UnionExchange extends AbstractExchange{
 
   public UnionExchange(@JsonProperty("child") PhysicalOperator child) {
     super(child);
+  }
+
+  @Override
+  public ParallelizationInfo getReceiverParallelizationInfo(List<DrillbitEndpoint> senderFragmentEndpoints) {
+    return ParallelizationInfo.create(1, 1);
   }
 
   @Override
@@ -62,16 +68,6 @@ public class UnionExchange extends AbstractExchange{
   @Override
   public Receiver getReceiver(int minorFragmentId) {
     return new UnorderedReceiver(this.senderMajorFragmentId, senderLocations);
-  }
-
-  @Override
-  public int getMaxSendWidth() {
-    return Integer.MAX_VALUE;
-  }
-
-  @Override
-  public int getMaxReceiveWidth() {
-    return 1;
   }
 
   @Override

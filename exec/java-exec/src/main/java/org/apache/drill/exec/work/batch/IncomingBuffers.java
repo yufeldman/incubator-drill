@@ -94,7 +94,7 @@ public class IncomingBuffers implements AutoCloseable {
   }
 
   public RawBatchBuffer[] getBuffers(int senderMajorFragmentId) {
-    return fragCounts.get(senderMajorFragmentId).getBuffers();
+    return fragCounts.get(senderMajorFragmentId).getBuffers().values().toArray(new RawBatchBuffer[0]);
   }
 
 
