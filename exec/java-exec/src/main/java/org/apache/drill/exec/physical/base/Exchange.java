@@ -20,11 +20,24 @@ package org.apache.drill.exec.physical.base;
 import java.util.List;
 
 import org.apache.drill.exec.physical.PhysicalOperatorSetupException;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public interface Exchange extends PhysicalOperator {
+
+  /**
+   * Exchanges are fragment boundaries in physical operator tree. It is divided into two parts. First part is Sender
+   * which becomes part of the sending fragment. Second part is Receiver which becomes part of the fragment that
+   * receives the data.
+   *
+   * Affinity describes whether sender fragments have affinity to receiver fragments or vice versa.
+   */
+  public enum ExchangeAffinity {
+    SENDER_AFFINITY_TO_RECEIVER, // Sending fragments have affinity to fragments that receive data.
+    RECEIVER_AFFINITY_TO_SENDER, // Receiving fragments have affinity to fragments that send data (default value).
+  }
 
   /**
    * Inform this Exchange node about its sender locations. This list should be index-ordered the same as the expected
@@ -65,20 +78,24 @@ public interface Exchange extends PhysicalOperator {
   public abstract Receiver getReceiver(int minorFragmentId);
 
   /**
-   * The widest width this sender can send (max sending parallelization). Typically Integer.MAX_VALUE.
+   * Provide parallelization parameters for sender side of the exchange. Output includes min width,
+   * max width and affinity to Drillbits.
    *
+   * @param receiverFragmentEndpoints Endpoints assigned to receiver fragment if available, otherwise an empty list.
    * @return
    */
   @JsonIgnore
-  public abstract int getMaxSendWidth();
+  public abstract ParallelizationInfo getSenderParallelizationInfo(List<DrillbitEndpoint> receiverFragmentEndpoints);
 
   /**
-   * The widest width this receiver can receive(max receive parallelization). Default is Integer.MAX_VALUE.
+   * Provide parallelization parameters for receiver side of the exchange. Output includes min width,
+   * max width and affinity to Drillbits.
    *
+   * @param senderFragmentEndpoints Endpoints assigned to receiver fragment if available, otherwise an empty list
    * @return
    */
   @JsonIgnore
-  public abstract int getMaxReceiveWidth();
+  public abstract ParallelizationInfo getReceiverParallelizationInfo(List<DrillbitEndpoint> senderFragmentEndpoints);
 
   /**
    * Return the feeding child of this operator node.
@@ -87,4 +104,9 @@ public interface Exchange extends PhysicalOperator {
    */
   public PhysicalOperator getChild();
 
+  /**
+   * Get the affinity of the Exchange
+   */
+  @JsonIgnore
+  public ExchangeAffinity getAffinity();
 }

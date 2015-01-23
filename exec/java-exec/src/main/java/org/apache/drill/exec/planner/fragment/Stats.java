@@ -18,32 +18,42 @@
 package org.apache.drill.exec.planner.fragment;
 
 
-public class Stats {
-  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(Stats.class);
+import org.apache.drill.exec.physical.EndpointAffinity;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo.ParallelizationInfoCollector;
 
-  private int maxWidth = Integer.MAX_VALUE;
+import java.util.List;
+
+public class Stats {
+
+  private final ParallelizationInfoCollector collector = new ParallelizationInfoCollector();
   private double totalCost;
 
-  public void addMaxWidth(int maxWidth){
-    this.maxWidth = Math.min(this.maxWidth, maxWidth);
+  public void addParallelizationInfo(ParallelizationInfo parallelizationInfo) {
+    collector.add(parallelizationInfo);
   }
 
   public void addCost(double cost){
     totalCost += cost;
   }
 
-  public int getMaxWidth() {
-    return maxWidth;
+  public void addMaxWidth(int maxWidth) {
+    collector.addMaxWidth(maxWidth);
+  }
+
+  public void addEndpointAffinities(List<EndpointAffinity> endpointAffinityList) {
+    collector.addEndpointAffinities(endpointAffinityList);
+  }
+
+  public ParallelizationInfo getParallelizationInfo() {
+    return collector.get();
   }
 
   @Override
   public String toString() {
-    return "Stats [maxWidth=" + maxWidth + ", totalCost=" + totalCost + "]";
+    return "Stats [totalCost=" + totalCost +", parallelizationInfo=" + collector.toString() + "]";
   }
 
   public double getTotalCost(){
     return totalCost;
   }
-
-
 }

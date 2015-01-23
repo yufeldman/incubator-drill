@@ -18,16 +18,23 @@
 package org.apache.drill.exec.physical.base;
 
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
+import org.apache.drill.exec.physical.MinorFragmentEndpoint;
 
+import java.util.List;
 
 public abstract class AbstractSender extends AbstractSingle implements Sender {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AbstractSender.class);
 
   protected final int oppositeMajorFragmentId;
+  // List of receiver MinorFragmentEndpoints each containing receiver minor fragment id and endpoint where it is running.
+  protected final List<MinorFragmentEndpoint> destinations;
 
-  public AbstractSender(int oppositeMajorFragmentId, PhysicalOperator child) {
+  public AbstractSender(int oppositeMajorFragmentId, PhysicalOperator child, List<MinorFragmentEndpoint> destinations) {
     super(child);
     this.oppositeMajorFragmentId = oppositeMajorFragmentId;
+    this.destinations = destinations;
   }
 
   @Override
@@ -36,9 +43,14 @@ public abstract class AbstractSender extends AbstractSingle implements Sender {
   }
 
   @Override
+  @JsonProperty("receiver-major-fragment")
   public int getOppositeMajorFragmentId() {
     return oppositeMajorFragmentId;
   }
 
-
+  @Override
+  @JsonProperty("destinations")
+  public List<MinorFragmentEndpoint> getDestinations() {
+    return ImmutableList.copyOf(destinations);
+  }
 }
