@@ -52,6 +52,10 @@ public class SingleSenderCreator implements RootCreator<SingleSender>{
 
   private static class SingleSenderRootExec extends BaseRootExec {
     static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(SingleSenderRootExec.class);
+
+    private final SendingAccountor sendCount = new SendingAccountor();
+    private final FragmentHandle oppositeHandle;
+
     private RecordBatch incoming;
     private DataTunnel tunnel;
     private FragmentHandle handle;
@@ -60,7 +64,6 @@ public class SingleSenderCreator implements RootCreator<SingleSender>{
     private FragmentContext context;
     private volatile boolean ok = true;
     private volatile boolean done = false;
-    private final SendingAccountor sendCount = new SendingAccountor();
 
     public enum Metric implements MetricDef {
       BYTES_SENT;
@@ -79,8 +82,11 @@ public class SingleSenderCreator implements RootCreator<SingleSender>{
       this.handle = context.getHandle();
       this.config = config;
       this.recMajor = config.getOppositeMajorFragmentId();
-      FragmentHandle opposite = handle.toBuilder().setMajorFragmentId(config.getOppositeMajorFragmentId()).setMinorFragmentId(0).build();
-      this.tunnel = context.getDataTunnel(config.getDestination(), opposite);
+      oppositeHandle = handle.toBuilder()
+          .setMajorFragmentId(config.getOppositeMajorFragmentId())
+          .setMinorFragmentId(config.getOppositeMinorFragmentId())
+          .build();
+      tunnel = context.getDataTunnel(config.getDestination(), oppositeHandle);
       this.context = context;
     }
 
@@ -103,8 +109,9 @@ public class SingleSenderCreator implements RootCreator<SingleSender>{
       switch (out) {
       case STOP:
       case NONE:
-        FragmentWritableBatch b2 = FragmentWritableBatch.getEmptyLastWithSchema(handle.getQueryId(), handle.getMajorFragmentId(),
-                handle.getMinorFragmentId(), recMajor, 0, incoming.getSchema());
+        FragmentWritableBatch b2 = FragmentWritableBatch.getEmptyLastWithSchema(handle.getQueryId(),
+            handle.getMajorFragmentId(), handle.getMinorFragmentId(), recMajor, oppositeHandle.getMinorFragmentId(),
+            incoming.getSchema());
         sendCount.increment();
         stats.startWait();
         try {
@@ -117,7 +124,7 @@ public class SingleSenderCreator implements RootCreator<SingleSender>{
       case OK_NEW_SCHEMA:
       case OK:
         FragmentWritableBatch batch = new FragmentWritableBatch(false, handle.getQueryId(), handle.getMajorFragmentId(),
-                handle.getMinorFragmentId(), recMajor, 0, incoming.getWritableBatch());
+                handle.getMinorFragmentId(), recMajor, oppositeHandle.getMinorFragmentId(), incoming.getWritableBatch());
         updateStats(batch);
         sendCount.increment();
         stats.startWait();
