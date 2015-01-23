@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,51 +17,36 @@
  */
 package org.apache.drill.exec.physical;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonTypeName;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
-import com.google.protobuf.TextFormat;
-
-public class EndpointAffinity {
-  static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(EndpointAffinity.class);
-
+@JsonTypeName("fragment-endpoint")
+public class MinorFragmentEndpoint {
+  private final int id;
   private final DrillbitEndpoint endpoint;
-  private double affinity = 0.0d;
 
-  public EndpointAffinity(DrillbitEndpoint endpoint) {
+  @JsonCreator
+  public MinorFragmentEndpoint(@JsonProperty("minorFragmentId") int id, @JsonProperty("endpoint") DrillbitEndpoint endpoint) {
+    this.id = id;
     this.endpoint = endpoint;
   }
 
-  public EndpointAffinity(DrillbitEndpoint endpoint, double affinity) {
-    this.endpoint = endpoint;
-    this.affinity = affinity;
+  @JsonProperty("minorFragmentId")
+  public int getId() {
+    return id;
   }
 
+  @JsonProperty("endpoint")
   public DrillbitEndpoint getEndpoint() {
     return endpoint;
   }
 
-  public double getAffinity() {
-    return affinity;
-  }
-
-  public void addAffinity(double f){
-    if (Double.POSITIVE_INFINITY == f) {
-      affinity = f;
-    } else if (Double.POSITIVE_INFINITY != affinity) {
-      affinity += f;
-    }
-  }
-
-  /**
-   * Is this endpoint required to be in fragment endpoint assignment list?
-   */
-  public boolean isAssignmentRequired() {
-    return Double.POSITIVE_INFINITY == affinity;
-  }
-
+  @JsonIgnore
   @Override
   public String toString() {
-    return "EndpointAffinity [endpoint=" + TextFormat.shortDebugString(endpoint) + ", affinity=" + affinity + "]";
+    return "FragmentEndPoint: id = " + id + ", ep = " + endpoint;
   }
-
 }

@@ -19,11 +19,14 @@ package org.apache.drill.exec.physical.config;
 
 import java.util.List;
 
+import com.google.common.base.Preconditions;
 import org.apache.drill.exec.physical.PhysicalOperatorSetupException;
 import org.apache.drill.exec.physical.base.AbstractExchange;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
+import org.apache.drill.exec.physical.base.PhysicalOperatorUtil;
 import org.apache.drill.exec.physical.base.Receiver;
 import org.apache.drill.exec.physical.base.Sender;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -39,6 +42,13 @@ public class UnionExchange extends AbstractExchange{
 
   public UnionExchange(@JsonProperty("child") PhysicalOperator child) {
     super(child);
+  }
+
+  @Override
+  public ParallelizationInfo getReceiverParallelizationInfo(List<DrillbitEndpoint> senderFragmentEndpoints) {
+    Preconditions.checkArgument(senderFragmentEndpoints != null && senderFragmentEndpoints.size() > 0);
+
+    return ParallelizationInfo.create(1, 1, getDefaultAffinityMap(senderFragmentEndpoints));
   }
 
   @Override
@@ -61,17 +71,7 @@ public class UnionExchange extends AbstractExchange{
 
   @Override
   public Receiver getReceiver(int minorFragmentId) {
-    return new UnorderedReceiver(this.senderMajorFragmentId, senderLocations);
-  }
-
-  @Override
-  public int getMaxSendWidth() {
-    return Integer.MAX_VALUE;
-  }
-
-  @Override
-  public int getMaxReceiveWidth() {
-    return 1;
+    return new UnorderedReceiver(senderMajorFragmentId, PhysicalOperatorUtil.getIndexOrderedEndpoints(senderLocations));
   }
 
   @Override

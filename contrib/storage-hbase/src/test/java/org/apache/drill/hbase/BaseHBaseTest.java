@@ -54,11 +54,11 @@ public class BaseHBaseTest extends BaseTestQuery {
     HBaseTestsSuite.configure(true, true);
     HBaseTestsSuite.initCluster();
 
-    storagePlugin = (HBaseStoragePlugin) bit.getContext().getStorage().getPlugin(HBASE_STORAGE_PLUGIN_NAME);
+    storagePlugin = (HBaseStoragePlugin) getDrillbitContext().getStorage().getPlugin(HBASE_STORAGE_PLUGIN_NAME);
     storagePluginConfig = storagePlugin.getConfig();
     storagePluginConfig.setEnabled(true);
     storagePluginConfig.setZookeeperPort(HBaseTestsSuite.getZookeeperPort());
-    bit.getContext().getStorage().createOrUpdate(HBASE_STORAGE_PLUGIN_NAME, storagePluginConfig, true);
+    getDrillbitContext().getStorage().createOrUpdate(HBASE_STORAGE_PLUGIN_NAME, storagePluginConfig, true);
   }
 
   @AfterClass

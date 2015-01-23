@@ -17,9 +17,15 @@
  */
 package org.apache.drill.exec.physical.base;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
+import org.apache.drill.exec.physical.EndpointAffinity;
 import org.apache.drill.exec.physical.PhysicalOperatorSetupException;
+import org.apache.drill.exec.planner.fragment.ParallelizationInfo;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 
 public abstract class AbstractExchange extends AbstractSingle implements Exchange {
@@ -41,9 +47,45 @@ public abstract class AbstractExchange extends AbstractSingle implements Exchang
     return false;
   }
 
+  /**
+   * Default sender parallelization width range is [1, Integer.MAX_VALUE] and no endpoint affinity
+   * @param receiverFragmentEndpoints Endpoints assigned to receiver fragment if available, otherwise an empty list.
+   * @return
+   */
   @Override
-  public int getMaxReceiveWidth() {
-    return Integer.MAX_VALUE;
+  public ParallelizationInfo getSenderParallelizationInfo(List<DrillbitEndpoint> receiverFragmentEndpoints) {
+    return ParallelizationInfo.DEFAULT;
+  }
+
+  /**
+   * Default receiver parallelization width range is [1, Integer.MAX_VALUE] and affinity to nodes where sender
+   * fragments are running.
+   * @param senderFragmentEndpoints Endpoints assigned to receiver fragment if available, otherwise an empty list.
+   * @return
+   */
+  @Override
+  public ParallelizationInfo getReceiverParallelizationInfo(List<DrillbitEndpoint> senderFragmentEndpoints) {
+    Preconditions.checkArgument(senderFragmentEndpoints != null && senderFragmentEndpoints.size() > 0);
+
+    return ParallelizationInfo.create(1, Integer.MAX_VALUE, getDefaultAffinityMap(senderFragmentEndpoints));
+  }
+
+  /**
+   * Get a default endpoint affinity map where affinity of a Drillbit is proportional to the number of its occurrances
+   * in given endpoint list.
+   */
+  protected List<EndpointAffinity> getDefaultAffinityMap(List<DrillbitEndpoint> fragmentEndpoints) {
+    Map<DrillbitEndpoint, EndpointAffinity> affinityMap = Maps.newHashMap();
+    final double affinityPerOccurrence = 1.0d / fragmentEndpoints.size();
+    for(DrillbitEndpoint sender : fragmentEndpoints) {
+      if (affinityMap.containsKey(sender)) {
+        affinityMap.get(sender).addAffinity(affinityPerOccurrence);
+      } else {
+        affinityMap.put(sender, new EndpointAffinity(sender, affinityPerOccurrence));
+      }
+    }
+
+    return new ArrayList(affinityMap.values());
   }
 
   protected abstract void setupSenders(List<DrillbitEndpoint> senderLocations) throws PhysicalOperatorSetupException ;
@@ -72,5 +114,8 @@ public abstract class AbstractExchange extends AbstractSingle implements Exchang
     throw new UnsupportedOperationException();
   }
 
-
+  @Override
+  public ExchangeAffinity getAffinity() {
+    return ExchangeAffinity.RECEIVER_AFFINITY_TO_SENDER;
+  }
 }

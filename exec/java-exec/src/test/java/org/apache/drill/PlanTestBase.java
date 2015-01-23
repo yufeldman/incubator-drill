@@ -197,8 +197,7 @@ public class PlanTestBase extends BaseTestQuery {
       throws Exception {
     List<QueryResultBatch> results = testSqlWithResults(sql);
 
-    RecordBatchLoader loader = new RecordBatchLoader(bit.getContext()
-        .getAllocator());
+    RecordBatchLoader loader = new RecordBatchLoader(getDrillbitContext().getAllocator());
     StringBuilder builder = new StringBuilder();
 
     for (QueryResultBatch b : results) {

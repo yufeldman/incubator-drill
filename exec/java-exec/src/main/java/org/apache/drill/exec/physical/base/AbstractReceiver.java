@@ -20,9 +20,12 @@ package org.apache.drill.exec.physical.base;
 import java.util.Iterator;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterators;
+import org.apache.drill.exec.physical.MinorFragmentEndpoint;
 
 public abstract class AbstractReceiver extends AbstractBase implements Receiver{
 
@@ -30,8 +33,12 @@ public abstract class AbstractReceiver extends AbstractBase implements Receiver{
 
   private final int oppositeMajorFragmentId;
 
-  public AbstractReceiver(int oppositeMajorFragmentId){
+  // List of sender MinorFragmentEndpoints each containing sender minor fragment id and endpoint where it is running.
+  private final List<MinorFragmentEndpoint> senders;
+
+  public AbstractReceiver(int oppositeMajorFragmentId, List<MinorFragmentEndpoint> senders){
     this.oppositeMajorFragmentId = oppositeMajorFragmentId;
+    this.senders = senders;
   }
 
   @Override
@@ -56,5 +63,14 @@ public abstract class AbstractReceiver extends AbstractBase implements Receiver{
     return oppositeMajorFragmentId;
   }
 
+  @JsonProperty("senders")
+  public List<MinorFragmentEndpoint> getProvidingEndpoints() {
+    return ImmutableList.copyOf(senders);
+  }
+
+  @JsonIgnore
+  public int getNumSenders() {
+    return senders.size();
+  }
 }
 

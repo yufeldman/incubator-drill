@@ -17,20 +17,19 @@
  ******************************************************************************/
 package org.apache.drill.exec.physical.impl.broadcastsender;
 
+import com.google.common.collect.Lists;
 import io.netty.buffer.ByteBuf;
 
 import java.util.List;
 
-import org.apache.drill.exec.ExecConstants;
-import org.apache.drill.exec.exception.SchemaChangeException;
 import org.apache.drill.exec.memory.OutOfMemoryException;
 import org.apache.drill.exec.ops.FragmentContext;
 import org.apache.drill.exec.ops.MetricDef;
 import org.apache.drill.exec.ops.OperatorContext;
+import org.apache.drill.exec.physical.MinorFragmentEndpoint;
 import org.apache.drill.exec.physical.config.BroadcastSender;
 import org.apache.drill.exec.physical.impl.BaseRootExec;
 import org.apache.drill.exec.physical.impl.SendingAccountor;
-import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
 import org.apache.drill.exec.proto.ExecProtos;
 import org.apache.drill.exec.proto.ExecProtos.FragmentHandle;
 import org.apache.drill.exec.proto.GeneralRPCProtos;
@@ -52,10 +51,20 @@ public class BroadcastSenderRootExec extends BaseRootExec {
   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BroadcastSenderRootExec.class);
   private final FragmentContext context;
   private final BroadcastSender config;
-  private final DataTunnel[] tunnels;
+  private final List<FragmentDataTunnel> tunnels;
   private final ExecProtos.FragmentHandle handle;
   private volatile boolean ok;
   private final RecordBatch incoming;
+
+  private class FragmentDataTunnel {
+    public final int minorFragmentId;
+    public final DataTunnel dataTunnel;
+
+    public FragmentDataTunnel(int minorFragmentId, DataTunnel dataTunnel) {
+      this.minorFragmentId = minorFragmentId;
+      this.dataTunnel = dataTunnel;
+    }
+  }
 
   public enum Metric implements MetricDef {
     N_RECEIVERS,
@@ -76,11 +85,13 @@ public class BroadcastSenderRootExec extends BaseRootExec {
     this.incoming = incoming;
     this.config = config;
     this.handle = context.getHandle();
-    List<DrillbitEndpoint> destinations = config.getDestinations();
-    this.tunnels = new DataTunnel[destinations.size()];
-    for(int i = 0; i < destinations.size(); ++i) {
-      FragmentHandle opp = handle.toBuilder().setMajorFragmentId(config.getOppositeMajorFragmentId()).setMinorFragmentId(i).build();
-      tunnels[i] = context.getDataTunnel(destinations.get(i), opp);
+    tunnels = Lists.newArrayListWithCapacity(config.getDestinations().size());
+    for(MinorFragmentEndpoint destination : config.getDestinations()) {
+      FragmentHandle opp = handle.toBuilder()
+          .setMajorFragmentId(config.getOppositeMajorFragmentId())
+          .setMinorFragmentId(destination.getId())
+          .build();
+      tunnels.add(new FragmentDataTunnel(destination.getId(), context.getDataTunnel(destination.getEndpoint(), opp)));
     }
   }
 
@@ -96,11 +107,16 @@ public class BroadcastSenderRootExec extends BaseRootExec {
     switch(out){
       case STOP:
       case NONE:
-        for (int i = 0; i < tunnels.length; ++i) {
-          FragmentWritableBatch b2 = FragmentWritableBatch.getEmptyLast(handle.getQueryId(), handle.getMajorFragmentId(), handle.getMinorFragmentId(), config.getOppositeMajorFragmentId(), i);
+        for (FragmentDataTunnel tunnel : tunnels) {
+          FragmentWritableBatch b2 = FragmentWritableBatch.getEmptyLast(
+              handle.getQueryId(),
+              handle.getMajorFragmentId(),
+              handle.getMinorFragmentId(),
+              config.getOppositeMajorFragmentId(),
+              tunnel.minorFragmentId);
           stats.startWait();
           try {
-            tunnels[i].sendRecordBatch(this.statusHandler, b2);
+            tunnel.dataTunnel.sendRecordBatch(statusHandler, b2);
           } finally {
             stats.stopWait();
           }
@@ -112,15 +128,22 @@ public class BroadcastSenderRootExec extends BaseRootExec {
       case OK_NEW_SCHEMA:
       case OK:
         WritableBatch writableBatch = incoming.getWritableBatch();
-        if (tunnels.length > 1) {
-          writableBatch.retainBuffers(tunnels.length - 1);
+        if (tunnels.size() > 1) {
+          writableBatch.retainBuffers(tunnels.size() - 1);
         }
-        for (int i = 0; i < tunnels.length; ++i) {
-          FragmentWritableBatch batch = new FragmentWritableBatch(false, handle.getQueryId(), handle.getMajorFragmentId(), handle.getMinorFragmentId(), config.getOppositeMajorFragmentId(), i, writableBatch);
+        for (FragmentDataTunnel tunnel : tunnels) {
+          FragmentWritableBatch batch = new FragmentWritableBatch(
+              false,
+              handle.getQueryId(),
+              handle.getMajorFragmentId(),
+              handle.getMinorFragmentId(),
+              config.getOppositeMajorFragmentId(),
+              tunnel.minorFragmentId,
+              writableBatch);
           updateStats(batch);
           stats.startWait();
           try {
-            tunnels[i].sendRecordBatch(this.statusHandler, batch);
+            tunnel.dataTunnel.sendRecordBatch(statusHandler, batch);
           } finally {
             stats.stopWait();
           }
@@ -136,7 +159,7 @@ public class BroadcastSenderRootExec extends BaseRootExec {
   }
 
   public void updateStats(FragmentWritableBatch writableBatch) {
-    stats.setLongStat(Metric.N_RECEIVERS, tunnels.length);
+    stats.setLongStat(Metric.N_RECEIVERS, tunnels.size());
     stats.addLongStat(Metric.BYTES_SENT, writableBatch.getByteCount());
   }
 
