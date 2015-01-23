@@ -23,6 +23,7 @@ import org.apache.drill.common.expression.FieldReference;
 import org.apache.drill.common.logical.data.Order.Ordering;
 import org.apache.drill.exec.physical.base.AbstractExchange;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
+import org.apache.drill.exec.physical.base.PhysicalOperatorUtil;
 import org.apache.drill.exec.physical.base.Receiver;
 import org.apache.drill.exec.physical.base.Sender;
 import org.apache.drill.exec.proto.CoordinationProtos.DrillbitEndpoint;
@@ -70,12 +71,6 @@ public class OrderedPartitionExchange extends AbstractExchange {
   }
 
   @Override
-  public int getMaxSendWidth() {
-    return Integer.MAX_VALUE;
-  }
-
-
-  @Override
   protected void setupSenders(List<DrillbitEndpoint> senderLocations) {
     this.senderLocations = senderLocations;
   }
@@ -87,13 +82,14 @@ public class OrderedPartitionExchange extends AbstractExchange {
 
   @Override
   public Sender getSender(int minorFragmentId, PhysicalOperator child) {
-    return new OrderedPartitionSender(orderings, ref, child, receiverLocations, receiverMajorFragmentId, senderLocations.size(), recordsToSample,
-            samplingFactor, completionFactor);
+    return new OrderedPartitionSender(orderings, ref, child,
+        PhysicalOperatorUtil.getIndexOrderedEndpoints(receiverLocations),
+        receiverMajorFragmentId, senderLocations.size(), recordsToSample, samplingFactor, completionFactor);
   }
 
   @Override
   public Receiver getReceiver(int minorFragmentId) {
-    return new UnorderedReceiver(senderMajorFragmentId, senderLocations);
+    return new UnorderedReceiver(senderMajorFragmentId, PhysicalOperatorUtil.getIndexOrderedEndpoints(senderLocations));
   }
 
   @Override

@@ -22,6 +22,7 @@ import java.util.List;
 import org.apache.drill.exec.physical.PhysicalOperatorSetupException;
 import org.apache.drill.exec.physical.base.AbstractExchange;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
+import org.apache.drill.exec.physical.base.PhysicalOperatorUtil;
 import org.apache.drill.exec.physical.base.Receiver;
 import org.apache.drill.exec.physical.base.Sender;
 import org.apache.drill.exec.proto.CoordinationProtos;
@@ -59,16 +60,12 @@ public class BroadcastExchange extends AbstractExchange {
 
   @Override
   public Sender getSender(int minorFragmentId, PhysicalOperator child) throws PhysicalOperatorSetupException {
-    return new BroadcastSender(receiverMajorFragmentId, child, receiverLocations);
+    return new BroadcastSender(receiverMajorFragmentId, child,
+        PhysicalOperatorUtil.getIndexOrderedEndpoints(receiverLocations));
   }
 
   @Override
   public Receiver getReceiver(int minorFragmentId) {
-    return new UnorderedReceiver(senderMajorFragmentId, senderLocations);
-  }
-
-  @Override
-  public int getMaxSendWidth() {
-    return Integer.MAX_VALUE;
+    return new UnorderedReceiver(senderMajorFragmentId, PhysicalOperatorUtil.getIndexOrderedEndpoints(senderLocations));
   }
 }
