@@ -18,6 +18,9 @@
 package org.apache.drill.exec.physical.impl.sort;
 
 import org.apache.drill.BaseTestQuery;
+import org.apache.drill.exec.ExecConstants;
+import org.apache.drill.exec.util.JsonStringArrayList;
+import org.apache.drill.exec.util.JsonStringHashMap;
 import org.junit.Test;
 
 /**
@@ -26,8 +29,36 @@ import org.junit.Test;
  */
 public class TestSort extends BaseTestQuery {
 
+  static JsonStringHashMap x = new JsonStringHashMap();
+  static JsonStringArrayList<JsonStringHashMap> repeated_map = new JsonStringArrayList<>();
+
+  static {
+    x.put("c", 1l);
+    repeated_map.add(0, x);
+  }
+
   @Test
   public void testSortWithComplexInput() throws Exception {
-    test("select t.a from cp.`jsoninput/repeatedmap_sort_bug.json` t order by t.b");
+    testBuilder()
+        .sqlQuery("select (t.a) as col from cp.`jsoninput/repeatedmap_sort_bug.json` t order by t.b")
+        .ordered()
+        .baselineColumns("col")
+        .baselineValues(repeated_map)
+        .build().run();
   }
+
+  @Test
+  public void testSortWithComplexInputWithExchanges() throws Exception {
+    testBuilder()
+        .sqlQuery("select (t.a) as col from cp.`jsoninput/repeatedmap_sort_bug.json` t order by t.b")
+        .optionSettingQueriesForTestQuery("alter session set `planner.slice_target` = 1")
+        .ordered()
+        .baselineColumns("col")
+        .baselineValues(repeated_map)
+        .build().run();
+
+    test("alter session set `planner.slice_target` = " + ExecConstants.SLICE_TARGET_DEFAULT);
+  }
+
+
 }

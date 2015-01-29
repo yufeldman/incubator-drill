@@ -72,12 +72,15 @@ public class MaterializedField {
 
   public String getLastName(){
     PathSegment seg = key.path.getRootSegment();
-    while (seg.getChild() != null) {
-      seg = seg.getChild();
+    PathSegment childSeg;
+    while ((childSeg = seg.getChild()) != null) {
+      if (!childSeg.isNamed()) {
+        return seg.getNameSegment().getPath();
+      }
+      seg = childSeg;
     }
     return seg.getNameSegment().getPath();
   }
-
 
   // TODO: rewrite without as direct match rather than conversion then match.
   public boolean matches(SerializedField field){

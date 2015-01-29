@@ -280,6 +280,7 @@ public class RepeatedMapVector extends AbstractContainerVector implements Repeat
 
     @Override
     public void transfer() {
+      to.lastPopulatedValueIndex = from.lastPopulatedValueIndex;
       from.offsets.transferTo(to.offsets);
       for (TransferPair p : pairs) {
         p.transfer();

@@ -59,6 +59,11 @@ public abstract class AbstractContainerVector implements ValueVector {
     this.field = Preconditions.checkNotNull(field);
     this.allocator = allocator;
     this.callBack = callBack;
+    for (MaterializedField children: field.getChildren()) {
+      String fieldName = children.getLastName();
+      ValueVector  v = TypeHelper.getNewVector(children, allocator, callBack);
+      putVector(fieldName, v);
+    }
   }
 
   @Override
@@ -173,20 +178,27 @@ public abstract class AbstractContainerVector implements ValueVector {
   }
 
   /**
+   * Inserts the specified child vector in the map. Returns the old vector if we had
+   * a child with the same name
+   */
+  private void putVector(String name, ValueVector vector) {
+    ValueVector old =  vectors.put(
+        Preconditions.checkNotNull(name, "field name cannot be null").toLowerCase(),
+        Preconditions.checkNotNull(vector, "vector cannot be null")
+        );
+
+    if (old != null && old != vector) {
+      logger.debug("Field [%s] mutated from [%s] to [%s]", name, old.getClass().getSimpleName(),
+          vector.getClass().getSimpleName());
+    }
+  }
+  /**
    * Inserts the vector with the given name if it does not exist else replaces it with the new value.
    *
    * Note that this method does not enforce any vector type check nor throws a schema change exception.
    */
   protected void putChild(String name, ValueVector vector) {
-    ValueVector old = vectors.put(
-        Preconditions.checkNotNull(name, "field name cannot be null").toLowerCase(),
-        Preconditions.checkNotNull(vector, "vector cannot be null")
-    );
-    if (old != null && old != vector) {
-      logger.debug("Field [%s] mutated from [%s] to [%s]", name, old.getClass().getSimpleName(),
-          vector.getClass().getSimpleName());
-    }
-
+    putVector(name, vector);
     field.addChild(vector.getField());
   }
 
