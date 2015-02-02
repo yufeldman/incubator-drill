@@ -18,15 +18,24 @@
 package org.apache.drill.exec.planner.physical.visitor;
 
 import com.google.common.collect.Lists;
+
+import org.apache.drill.common.types.TypeProtos.MajorType;
 import org.apache.drill.exec.planner.physical.DeMuxExchangePrel;
 import org.apache.drill.exec.planner.physical.ExchangePrel;
 import org.apache.drill.exec.planner.physical.HashToRandomExchangePrel;
 import org.apache.drill.exec.planner.physical.MuxExchangePrel;
 import org.apache.drill.exec.planner.physical.PlannerSettings;
 import org.apache.drill.exec.planner.physical.Prel;
+import org.apache.drill.exec.planner.physical.ProjectPrel;
 import org.apache.drill.exec.planner.physical.SelectionVectorRemoverPrel;
+import org.apache.drill.exec.planner.physical.DrillDistributionTrait.DistributionField;
+import org.apache.drill.exec.planner.sql.DrillSqlOperator;
 import org.apache.drill.exec.server.options.OptionManager;
 import org.eigenbase.rel.RelNode;
+import org.eigenbase.reltype.RelDataType;
+import org.eigenbase.reltype.RelDataTypeField;
+import org.eigenbase.rex.RexNode;
+import org.eigenbase.rex.RexUtil;
 
 import java.util.Collections;
 import java.util.List;
@@ -40,11 +49,7 @@ public class InsertLocalExchangeVisitor extends BasePrelVisitor<Prel, Void, Runt
     boolean isMuxEnabled = options.getOption(PlannerSettings.MUX_EXCHANGE.getOptionName()).bool_val;
     boolean isDeMuxEnabled = options.getOption(PlannerSettings.DEMUX_EXCHANGE.getOptionName()).bool_val;
 
-    if (isMuxEnabled || isDeMuxEnabled) {
-      return prel.accept(new InsertLocalExchangeVisitor(isMuxEnabled, isDeMuxEnabled), null);
-    }
-
-    return prel;
+    return prel.accept(new InsertLocalExchangeVisitor(isMuxEnabled, isDeMuxEnabled), null);
   }
 
   public InsertLocalExchangeVisitor(boolean isMuxEnabled, boolean isDeMuxEnabled) {
@@ -59,11 +64,44 @@ public class InsertLocalExchangeVisitor extends BasePrelVisitor<Prel, Void, Runt
     //   If MuxExchange is enabled, insert a MuxExchangePrel before HashToRandomExchangePrel.
     //   If DeMuxExchange is enabled, insert a DeMuxExchangePrel after HashToRandomExchangePrel.
     if (prel instanceof HashToRandomExchangePrel) {
-      Prel newPrel = child;
+
+      HashToRandomExchangePrel hashPrel = (HashToRandomExchangePrel) prel;
+      final List<String> childFields = child.getRowType().getFieldNames();
+
+      List<DistributionField> fields = hashPrel.getFields();
+      DrillSqlOperator sqlOpH = new DrillSqlOperator("hash", 1, MajorType.getDefaultInstance());
+      DrillSqlOperator sqlOpX = new DrillSqlOperator("xor", 2, MajorType.getDefaultInstance());
+      RexNode prevRex = null;
+      List<String> outputFieldNames = Lists.newArrayList(childFields);
+      for ( DistributionField field : fields) {
+        RexNode rex = prel.getCluster().getRexBuilder().makeInputRef(child.getRowType().getFieldList().get(field.getFieldId()).getType(), field.getFieldId());
+        RexNode rexFunc = prel.getCluster().getRexBuilder().makeCall(sqlOpH, rex);
+        if ( prevRex != null ) {
+          rexFunc = prel.getCluster().getRexBuilder().makeCall(sqlOpX, prevRex, rexFunc);
+        }
+        prevRex = rexFunc;
+      }
+      List <RexNode> updatedExpr = Lists.newArrayList();
+      List <RexNode> removeUpdatedExpr = Lists.newArrayList();
+      for ( RelDataTypeField field : child.getRowType().getFieldList()) {
+        RexNode rex = prel.getCluster().getRexBuilder().makeInputRef(field.getType(), field.getIndex());
+        updatedExpr.add(rex);
+        removeUpdatedExpr.add(rex);
+      }
+      outputFieldNames.add("EXPRHASH");
+
+      updatedExpr.add(prevRex);
+      RelDataType rowType = RexUtil.createStructType(prel.getCluster().getTypeFactory(), updatedExpr, outputFieldNames);
+
+      ProjectPrel addColumnprojectPrel = new ProjectPrel(child.getCluster(), child.getTraitSet(), child, updatedExpr, rowType);
+
+      Prel newPrel = addColumnprojectPrel;
+
+
       if (isMuxEnabled) {
         // We need a SVRemover, because the sender used in MuxExchange doesn't support selection vector
-        Prel svRemovePrel = new SelectionVectorRemoverPrel(child);
-        newPrel = new MuxExchangePrel(prel.getCluster(), prel.getTraitSet(), svRemovePrel);
+        //Prel svRemovePrel = new SelectionVectorRemoverPrel(child);
+        newPrel = new MuxExchangePrel(prel.getCluster(), prel.getTraitSet(), newPrel);
       }
 
       newPrel = new HashToRandomExchangePrel(prel.getCluster(),
@@ -76,7 +114,11 @@ public class InsertLocalExchangeVisitor extends BasePrelVisitor<Prel, Void, Runt
             hashExchangePrel.getFields());
       }
 
-      return newPrel;
+      RelDataType removeRowType = RexUtil.createStructType(newPrel.getCluster().getTypeFactory(), removeUpdatedExpr, childFields);
+
+      ProjectPrel removeColumnProjectPrel = new ProjectPrel(newPrel.getCluster(), newPrel.getTraitSet(), newPrel, removeUpdatedExpr, removeRowType);
+
+      return (Prel) removeColumnProjectPrel.copy(removeColumnProjectPrel.getTraitSet(), Collections.singletonList( (RelNode) newPrel ));
     }
 
     return (Prel)prel.copy(prel.getTraitSet(), Collections.singletonList(((RelNode)child)));
