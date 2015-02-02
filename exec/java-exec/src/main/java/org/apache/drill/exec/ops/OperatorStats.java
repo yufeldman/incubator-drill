@@ -53,9 +53,29 @@ public class OperatorStats {
   private long waitMark;
 
   private long schemas;
+  private int inputCount;
 
   public OperatorStats(OpProfileDef def, BufferAllocator allocator){
     this(def.getOperatorId(), def.getOperatorType(), def.getIncomingCount(), allocator);
+  }
+
+  /**
+   * Copy constructor to be able to create a copy of existing stats object shell and use it independently
+   * this is useful if stats have to be updated in different threads, since it is not really
+   * possible to update such stats as waitNanos, setupNanos and processingNanos across threads
+   * @param original - OperatorStats object to create a copy from
+   */
+  public OperatorStats(OperatorStats original) {
+    this(original.operatorId, original.operatorType, original.inputCount, original.allocator);
+
+    inProcessing = original.inProcessing;
+    inSetup = original.inSetup;
+    inWait = original.inWait;
+
+    processingMark = original.processingMark;
+    setupMark = original.setupMark;
+    waitMark = original.waitMark;
+
   }
 
   private OperatorStats(int operatorId, int operatorType, int inputCount, BufferAllocator allocator) {
@@ -63,6 +83,7 @@ public class OperatorStats {
     this.allocator = allocator;
     this.operatorId = operatorId;
     this.operatorType = operatorType;
+    this.inputCount = inputCount;
     this.recordsReceivedByInput = new long[inputCount];
     this.batchesReceivedByInput = new long[inputCount];
     this.schemaCountByInput = new long[inputCount];
@@ -71,6 +92,39 @@ public class OperatorStats {
   private String assertionError(String msg){
     return String.format("Failure while %s for operator id %d. Currently have states of processing:%s, setup:%s, waiting:%s.", msg, operatorId, inProcessing, inSetup, inWait);
   }
+  /**
+   * OperatorStats merger - to merge stats from other OperatorStats
+   * this is needed in case some processing is multithreaded that needs to have
+   * separate OperatorStats to deal with
+   * @param from - OperatorStats from where to merge to "this"
+   * @return OperatorStats - for convenience so one can merge multiple stats in one go
+   */
+  public OperatorStats mergeStats(OperatorStats from) {
+    processingNanos +=from.processingNanos;
+    setupNanos += from.setupNanos;
+    waitNanos += from.waitNanos;
+    for ( int i : from.longMetrics.keys) {
+      longMetrics.putOrAdd(i, from.longMetrics.values[i], from.longMetrics.values[i]);
+    }
+    for (int i : from.doubleMetrics.keys) {
+      doubleMetrics.putOrAdd(i, from.doubleMetrics.values[i], from.doubleMetrics.values[i]);
+    }
+    // TODO - need to deal with batches, records, schemas
+    return this;
+  }
+
+  /**
+   * Clear stats
+   */
+  public void clear() {
+    processingNanos = 0l;
+    setupNanos = 0l;
+    waitNanos = 0l;
+    longMetrics.clear();
+    doubleMetrics.clear();
+    // TODO - need to deal with batches, records, schemas
+  }
+
   public void startSetup() {
     assert !inSetup  : assertionError("starting setup");
     stopProcessing();

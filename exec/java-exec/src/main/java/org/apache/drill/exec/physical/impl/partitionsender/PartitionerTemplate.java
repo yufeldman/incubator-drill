@@ -62,6 +62,9 @@ public abstract class PartitionerTemplate implements Partitioner {
   private SelectionVector2 sv2;
   private SelectionVector4 sv4;
   private RecordBatch incoming;
+  private OperatorStats stats;
+  private int offset;
+  private int end;
   private List<OutgoingRecordBatch> outgoingBatches = Lists.newArrayList();
 
   private static final String REWRITE_MSG = "Failed to write the record {} in available space. Attempting to rewrite.";
@@ -76,24 +79,40 @@ public abstract class PartitionerTemplate implements Partitioner {
   }
 
   @Override
+  public PartitionOutgoingBatch getOutgoingBatch(int index) {
+    if ( index >= offset && index < end) {
+      return outgoingBatches.get(index - offset);
+    }
+    return null;
+  }
+
+  @Override
   public final void setup(FragmentContext context,
                           RecordBatch incoming,
                           HashPartitionSender popConfig,
                           OperatorStats stats,
                           SendingAccountor sendingAccountor,
                           OperatorContext oContext,
-                          StatusHandler statusHandler) throws SchemaChangeException {
+                          StatusHandler statusHandler,
+                          int offset, int end) throws SchemaChangeException {
 
     this.incoming = incoming;
+    this.stats = stats;
+    this.offset = offset;
+    this.end = end;
     doSetup(context, incoming, null);
 
     for (Entry<Integer, DrillbitEndpoint> endpoint : popConfig.getDestinations().entrySet()) {
-      FragmentHandle opposite = context.getHandle().toBuilder()
+      // create outgoingBatches only for subset of Destination Points
+      if ( endpoint.getKey() >= offset && endpoint.getKey() < end ) {
+        logger.debug("offset: {}, count: {}", offset, end);
+        FragmentHandle opposite = context.getHandle().toBuilder()
           .setMajorFragmentId(popConfig.getOppositeMajorFragmentId())
           .setMinorFragmentId(endpoint.getKey()).build();
-      outgoingBatches.add(new OutgoingRecordBatch(stats, sendingAccountor, popConfig,
+        outgoingBatches.add(new OutgoingRecordBatch(stats, sendingAccountor, popConfig,
           context.getDataTunnel(endpoint.getValue(), opposite), context, oContext.getAllocator(), endpoint.getKey(),
           statusHandler));
+      }
     }
 
     for (OutgoingRecordBatch outgoingRecordBatch : outgoingBatches) {
@@ -116,6 +135,11 @@ public abstract class PartitionerTemplate implements Partitioner {
       default:
         throw new UnsupportedOperationException("Unknown selection vector mode: " + svMode.toString());
     }
+  }
+
+  @Override
+  public OperatorStats getStats() {
+    return stats;
   }
 
   /**
@@ -145,33 +169,47 @@ public abstract class PartitionerTemplate implements Partitioner {
   public void partitionBatch(RecordBatch incoming) throws IOException {
     SelectionVectorMode svMode = incoming.getSchema().getSelectionVectorMode();
 
+    // let's assume we have hash in incoming.getSchema().column - so it will be on each record
+    // for now assume 2 threads (round robin) outgoingbatch is thread agnostic
     // Keeping the for loop inside the case to avoid case evaluation for each record.
     switch(svMode) {
       case NONE:
         for (int recordId = 0; recordId < incoming.getRecordCount(); ++recordId) {
-          OutgoingRecordBatch outgoingBatch = outgoingBatches.get(doEval(recordId));
-          outgoingBatch.copy(recordId);
+          doStuff(recordId);
         }
         break;
 
       case TWO_BYTE:
         for (int recordId = 0; recordId < incoming.getRecordCount(); ++recordId) {
           int svIndex = sv2.getIndex(recordId);
-          OutgoingRecordBatch outgoingBatch = outgoingBatches.get(doEval(svIndex));
-          outgoingBatch.copy(svIndex);
+          doStuff(svIndex);
         }
         break;
 
       case FOUR_BYTE:
         for (int recordId = 0; recordId < incoming.getRecordCount(); ++recordId) {
           int svIndex = sv4.get(recordId);
-          OutgoingRecordBatch outgoingBatch = outgoingBatches.get(doEval(svIndex));
-          outgoingBatch.copy(svIndex);
+          doStuff(svIndex);
         }
         break;
 
       default:
         throw new UnsupportedOperationException("Unknown selection vector mode: " + svMode.toString());
+    }
+  }
+
+  /**
+   * Helper method for code reuse
+   * @param svIndex
+   * @param incoming
+   * @throws IOException
+   */
+  private void doStuff(int svIndex) throws IOException {
+    int index = doEval(svIndex);
+    //logger.debug("index: {}, offset: {}, count: {}", index, offset, count);
+    if ( index >= offset && index < end) {
+      OutgoingRecordBatch outgoingBatch = outgoingBatches.get(index - offset);
+      outgoingBatch.copy(svIndex);
     }
   }
 
@@ -398,5 +436,6 @@ public abstract class PartitionerTemplate implements Partitioner {
     public void clear(){
       vectorContainer.clear();
     }
+
   }
 }

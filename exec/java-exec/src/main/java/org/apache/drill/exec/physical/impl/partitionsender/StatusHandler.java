@@ -32,7 +32,7 @@ public class StatusHandler extends BaseRpcOutcomeListener<Ack> {
   RpcException ex;
   SendingAccountor sendCount;
   FragmentContext context;
-  boolean ok = true;
+  volatile boolean ok = true;
 
   public StatusHandler(SendingAccountor sendCount, FragmentContext context) {
     this.sendCount = sendCount;
