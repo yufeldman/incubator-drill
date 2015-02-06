@@ -102,10 +102,11 @@ public abstract class PartitionerTemplate implements Partitioner {
     this.end = end;
     doSetup(context, incoming, null);
 
+    int fieldId = 0;
     for (Entry<Integer, DrillbitEndpoint> endpoint : popConfig.getDestinations().entrySet()) {
       // create outgoingBatches only for subset of Destination Points
-      if ( endpoint.getKey() >= offset && endpoint.getKey() < end ) {
-        logger.debug("offset: {}, count: {}", offset, end);
+      if ( fieldId >= offset && fieldId < end ) {
+        logger.debug("offset: {}, count: {}, fieldId: {}", offset, end, fieldId);
         FragmentHandle opposite = context.getHandle().toBuilder()
           .setMajorFragmentId(popConfig.getOppositeMajorFragmentId())
           .setMinorFragmentId(endpoint.getKey()).build();
@@ -113,6 +114,7 @@ public abstract class PartitionerTemplate implements Partitioner {
           context.getDataTunnel(endpoint.getValue(), opposite), context, oContext.getAllocator(), endpoint.getKey(),
           statusHandler));
       }
+      fieldId++;
     }
 
     for (OutgoingRecordBatch outgoingRecordBatch : outgoingBatches) {
@@ -206,7 +208,7 @@ public abstract class PartitionerTemplate implements Partitioner {
    */
   private void doStuff(int svIndex) throws IOException {
     int index = doEval(svIndex);
-    //logger.debug("index: {}, offset: {}, count: {}", index, offset, count);
+    logger.debug("index: {}, offset: {}, end: {}", index, offset, end);
     if ( index >= offset && index < end) {
       OutgoingRecordBatch outgoingBatch = outgoingBatches.get(index - offset);
       outgoingBatch.copy(svIndex);
