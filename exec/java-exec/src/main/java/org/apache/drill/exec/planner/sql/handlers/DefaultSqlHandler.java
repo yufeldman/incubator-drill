@@ -256,7 +256,9 @@ public class DefaultSqlHandler extends AbstractSqlHandler {
      * Insert LocalExchange nodes
      */
     if (queryOptions.getOption(PlannerSettings.LOCAL_EXCHANGES.getOptionName()).bool_val) {
-      phyRelNode = InsertLocalExchangeVisitor.insertLocalExchanges(phyRelNode);
+      //phyRelNode = InsertLocalExchangeVisitor.insertLocalExchanges(phyRelNode);
+      phyRelNode = InsertProjectorVisitor.insertRenameProject(phyRelNode);
+
     }
 
     /* 8.)
@@ -265,7 +267,7 @@ public class DefaultSqlHandler extends AbstractSqlHandler {
      */
     phyRelNode = RelUniqifier.uniqifyGraph(phyRelNode);
 
-    phyRelNode = InsertProjectorVisitor.insertRenameProject(phyRelNode);
+    //phyRelNode = InsertProjectorVisitor.insertRenameProject(phyRelNode);
 
     return phyRelNode;
   }

@@ -23,14 +23,10 @@ import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
-import org.apache.drill.common.expression.ErrorCollector;
-import org.apache.drill.common.expression.ErrorCollectorImpl;
-import org.apache.drill.common.expression.LogicalExpression;
 import org.apache.drill.exec.exception.ClassTransformationException;
 import org.apache.drill.exec.exception.SchemaChangeException;
 import org.apache.drill.exec.expr.ClassGenerator;
 import org.apache.drill.exec.expr.CodeGenerator;
-import org.apache.drill.exec.expr.ExpressionTreeMaterializer;
 import org.apache.drill.exec.expr.ValueVectorReadExpression;
 import org.apache.drill.exec.expr.ClassGenerator.HoldingContainer;
 import org.apache.drill.exec.memory.OutOfMemoryException;
@@ -221,7 +217,7 @@ public class PartitionSenderRootExec extends BaseRootExec {
       // TODO how to distribute remainder better especially when it is high thread count
       int startIndex = i*divisor;
       int endIndex = (i < actualPartitions - 1 ) ? (i+1)*divisor : outGoingBatchCount;
-      OperatorStats partitionStats = new OperatorStats(stats);
+      OperatorStats partitionStats = new OperatorStats(stats, true);
       subPartitioners[i].setup(context, incoming, popConfig, partitionStats, sendCount, oContext, statusHandler,
         startIndex, endIndex);
     }

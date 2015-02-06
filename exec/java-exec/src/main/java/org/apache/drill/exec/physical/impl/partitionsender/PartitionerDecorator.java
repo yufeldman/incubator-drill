@@ -31,6 +31,14 @@ import org.apache.drill.exec.rpc.NamedThreadFactory;
 
 import com.google.common.collect.Lists;
 
+/**
+ * Decorator class to hide multiple Partitioner existence from the caller
+ * since this class involves multithreading processing of incoming batches
+ * as well as flushing it needs special handling of OperatorStats - stats
+ * since stats are not suitable for use in multithreaded environment
+ * The algorithm to figure out processing versus wait time is based on following formula:
+ * totalWaitTime = totalAllPartitionersProcessingTime - max(sum(processingTime) by partitioner)
+ */
 public class PartitionerDecorator {
 
   private   static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(PartitionerDecorator.class);
@@ -39,63 +47,86 @@ public class PartitionerDecorator {
 
   private Partitioner [] partitioners;
   private final OperatorStats stats;
+  private final String tName;
+
 
   public PartitionerDecorator(Partitioner [] partitioners, OperatorStats stats) {
     this.partitioners = partitioners;
     this.stats = stats;
+    this.tName = Thread.currentThread().getName();
   }
 
+  /**
+   * partitionBatch - decorator method to call real Partitioner(s) to process incoming batch
+   * uses either threading or not threading approach based on number Partitioners
+   * @param incoming
+   * @throws IOException
+   */
   public void partitionBatch(final RecordBatch incoming) throws IOException {
-    // some optimization
-    if (partitioners.length == 1 ) {
-      // no need for threads
-      partitioners[0].getStats().clear();
-      logger.debug("incoming size: {}", incoming.getRecordCount());
-      partitioners[0].partitionBatch(incoming);
-      stats.mergeStats(partitioners[0].getStats());
-      return;
-    }
+    executeMethodLogic(new MyExecute (){
 
-    List<Future<Object>> futures = Lists.newArrayList();
-    for (final Partitioner part : partitioners ) {
-      part.getStats().clear();
-      futures.add(EXECUTOR.submit(new Callable<Object>() {
-
-        @Override
-        public Object call() throws IOException {
-          logger.debug("incoming size: {}", incoming.getRecordCount());
-            part.partitionBatch(incoming);
-            stats.mergeStats(part.getStats());
-            return null;
+      @Override
+      public void execute(Partitioner part) throws IOException {
+        part.getStats().clear();
+        logger.debug("incoming size: {}", incoming.getRecordCount());
+        part.getStats().startProcessing();
+        try {
+          part.partitionBatch(incoming);
+        } finally {
+          part.getStats().stopProcessing();
+          stats.mergeMetrics(part.getStats());
         }
-       }));
-    }
-    for ( Future<Object> future : futures) {
-      try {
-        future.get();
-      } catch (InterruptedException | ExecutionException e) {
-        throw new IOException(e);
-      }
-    }
+      }});
   }
-  public void flushOutgoingBatches(boolean isLastBatch, boolean schemaChanged) throws IOException {
-    for (Partitioner part : partitioners ) {
-      part.getStats().clear();
-      part.flushOutgoingBatches(isLastBatch, schemaChanged);
-      stats.mergeStats(part.getStats());
-    }
+
+  /**
+   * flushOutgoingBatches - decorator to call real Partitioner(s) flushOutgoingBatches
+   * @param isLastBatch
+   * @param schemaChanged
+   * @throws IOException
+   */
+  public void flushOutgoingBatches(final boolean isLastBatch, final boolean schemaChanged) throws IOException {
+    executeMethodLogic(new MyExecute (){
+
+      @Override
+      public void execute(Partitioner part) throws IOException {
+        part.getStats().clear();
+        part.getStats().startProcessing();
+        try {
+          part.flushOutgoingBatches(isLastBatch, schemaChanged);
+        } finally {
+          part.getStats().stopProcessing();
+          stats.mergeMetrics(part.getStats());
+        }
+      }});
   }
+
+  /**
+   * decorator method to call multiple Partitioners initialize()
+   */
   public void initialize() {
     for (Partitioner part : partitioners ) {
       part.initialize();
     }
   }
 
+  /**
+   * decorator method to call multiple Partitioners clear()
+   */
   public void clear() {
     for (Partitioner part : partitioners ) {
       part.clear();
     }
   }
+
+  /**
+   * Helper method to get PartitionOutgoingBatch based on the index
+   * since we may have more then one Partitioner
+   * As number of Partitioners should be very small it is OK to loop
+   * in order to find right partitioner
+   * @param index
+   * @return
+   */
   public PartitionOutgoingBatch getOutgoingBatches(int index) {
     for (Partitioner part : partitioners ) {
       PartitionOutgoingBatch outBatch = part.getOutgoingBatch(index);
@@ -105,4 +136,62 @@ public class PartitionerDecorator {
     }
     return null;
   }
-}
+
+  /**
+   * Helper to execute the different methods wrapped into same logic
+   * @param iface
+   * @throws IOException
+   */
+  private void executeMethodLogic(final MyExecute iface) throws IOException {
+    if (partitioners.length == 1 ) {
+      // no need for threads
+      iface.execute(partitioners[0]);
+      // since main stats did not have any wait time - adjust based of partitioner stats wait time
+      stats.adjustWaitNanos(partitioners[0].getStats().getWaitNanos());
+      return;
+    }
+
+    long maxProcessTime = 0l;
+    // start waiting on main stats to adjust by sum(max(processing)) at the end
+    stats.startWait();
+    try {
+      List<Future<Partitioner>> futures = Lists.newArrayList();
+      for (final Partitioner part : partitioners ) {
+        futures.add(EXECUTOR.submit(new Callable<Partitioner>() {
+
+          @Override
+          public Partitioner call() throws IOException {
+            String curThreadName = "Partitioner-" + Thread.currentThread().getId() + "-" + tName;
+            Thread.currentThread().setName(curThreadName);
+            iface.execute(part);
+            return part;
+          }
+         }));
+      }
+      for ( Future<Partitioner> future : futures) {
+        try {
+          Partitioner part = future.get();
+          long currentProcessingNanos = part.getStats().getProcessingNanos();
+          // find out max Partitioner processing time
+          maxProcessTime = (currentProcessingNanos > maxProcessTime) ? currentProcessingNanos : maxProcessTime;
+        } catch (InterruptedException | ExecutionException e) {
+          throw new IOException(e);
+        }
+      }
+    } finally {
+      stats.stopWait();
+      // scale down main stats wait time based on calculated processing time
+      stats.adjustWaitNanos(-maxProcessTime);
+    }
+
+  }
+
+  /**
+   * Helper interface to generalize functionality executed in the thread
+   * since it is absolutely the same for partitionBatch and flushOutgoingBatches
+   *
+   */
+  private interface MyExecute {
+    public void execute(Partitioner partitioner) throws IOException;
+  }
+ }

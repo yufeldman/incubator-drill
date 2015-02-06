@@ -22,8 +22,10 @@ import java.util.List;
 
 import org.apache.drill.common.types.TypeProtos.MajorType;
 import org.apache.drill.exec.planner.physical.DrillDistributionTrait.DistributionField;
+import org.apache.drill.exec.planner.physical.DeMuxExchangePrel;
 import org.apache.drill.exec.planner.physical.ExchangePrel;
 import org.apache.drill.exec.planner.physical.HashToRandomExchangePrel;
+import org.apache.drill.exec.planner.physical.MuxExchangePrel;
 import org.apache.drill.exec.planner.physical.Prel;
 import org.apache.drill.exec.planner.physical.ProjectPrel;
 import org.apache.drill.exec.planner.sql.DrillSqlOperator;
@@ -35,7 +37,13 @@ import org.eigenbase.rex.RexUtil;
 
 import com.google.common.collect.Lists;
 
-
+/**
+ * Visitor to insert additional Exchanges to wrap around HashToRandomExchange to have ability to
+ * 1. Merge multiple senders into single (MuxExchange)
+ * 2. Do not recalculate Hash by inserting ProjectOperator with additional column to represent hash
+ * 3. Insert DeMux exchange
+ *
+ */
 public class InsertProjectorVisitor extends BasePrelVisitor<Prel, Void, RuntimeException> {
 
   private static InsertProjectorVisitor INSTANCE = new InsertProjectorVisitor();
@@ -47,9 +55,13 @@ public class InsertProjectorVisitor extends BasePrelVisitor<Prel, Void, RuntimeE
   @Override
   public Prel visitExchange(ExchangePrel prel, Void value) throws RuntimeException {
     Prel child = prel.iterator().next().accept(this, null);
+
     if ( !(prel instanceof HashToRandomExchangePrel)) {
       return (Prel)prel.copy(prel.getTraitSet(), Collections.singletonList(((RelNode)child)));
     }
+
+    // Whenever we encounter a HashToRandomExchangePrel, convert it into a tree of MuxExchangePrel,
+    // HashToRandomExchangePrel and DemuxExchangePrel.
     HashToRandomExchangePrel hashPrel = (HashToRandomExchangePrel) prel;
     final List<String> childFields = child.getRowType().getFieldNames();
 
@@ -80,13 +92,19 @@ public class InsertProjectorVisitor extends BasePrelVisitor<Prel, Void, RuntimeE
 
     ProjectPrel addColumnprojectPrel = new ProjectPrel(child.getCluster(), child.getTraitSet(), child, updatedExpr, rowType);
 
-    HashToRandomExchangePrel newHashPrel = (HashToRandomExchangePrel) prel.copy(prel.getTraitSet(), Collections.singletonList( (RelNode) addColumnprojectPrel ));
+    Prel localExPrel = new MuxExchangePrel(prel.getCluster(), prel.getTraitSet(), addColumnprojectPrel);
 
-    RelDataType removeRowType = RexUtil.createStructType(newHashPrel.getCluster().getTypeFactory(), removeUpdatedExpr, childFields);
+    HashToRandomExchangePrel newHashPrel = (HashToRandomExchangePrel) prel.copy(prel.getTraitSet(), Collections.singletonList( (RelNode) localExPrel ));
 
-    ProjectPrel removeColumnProjectPrel = new ProjectPrel(newHashPrel.getCluster(), newHashPrel.getTraitSet(), newHashPrel, removeUpdatedExpr, removeRowType);
+    // Insert a DeMuxExchange to narrow down the number of receivers
+    DeMuxExchangePrel deMuxExchangePrel = new DeMuxExchangePrel(prel.getCluster(), prel.getTraitSet(),
+        newHashPrel, newHashPrel.getFields());
 
-    return (Prel) removeColumnProjectPrel.copy(removeColumnProjectPrel.getTraitSet(), Collections.singletonList( (RelNode) newHashPrel ));
+    RelDataType removeRowType = RexUtil.createStructType(deMuxExchangePrel.getCluster().getTypeFactory(), removeUpdatedExpr, childFields);
+
+    ProjectPrel removeColumnProjectPrel = new ProjectPrel(deMuxExchangePrel.getCluster(), deMuxExchangePrel.getTraitSet(), deMuxExchangePrel, removeUpdatedExpr, removeRowType);
+
+    return (Prel) removeColumnProjectPrel.copy(removeColumnProjectPrel.getTraitSet(), Collections.singletonList( (RelNode) deMuxExchangePrel ));
   }
 
   @Override
@@ -97,49 +115,4 @@ public class InsertProjectorVisitor extends BasePrelVisitor<Prel, Void, RuntimeE
     }
     return (Prel) prel.copy(prel.getTraitSet(), children);
   }
-
- /* @Override
-  public Prel visitPrel(Prel prel, Void value) throws RuntimeException {
-    List<RelNode> children = Lists.newArrayList();
-    for(Prel child : prel){
-      child = child.accept(this, null);
-
-      if ( !(prel instanceof HashToRandomExchangePrel)) {
-        children.add(child);
-      } else {
-        HashToRandomExchangePrel hashPrel = (HashToRandomExchangePrel) prel;
-        final List<String> childFields = child.getRowType().getFieldNames();
-
-        List<DistributionField> fields = hashPrel.getFields();
-        DrillSqlOperator sqlOpH = new DrillSqlOperator("hash", 1, MajorType.getDefaultInstance());
-        DrillSqlOperator sqlOpX = new DrillSqlOperator("xor", 2, MajorType.getDefaultInstance());
-        RexNode prevRex = null;
-        List<String> outputFieldNames = Lists.newArrayList(childFields);
-        for ( DistributionField field : fields) {
-          RexNode rex = prel.getCluster().getRexBuilder().makeInputRef(child.getRowType().getFieldList().get(field.getFieldId()).getType(), field.getFieldId());
-          RexNode rexFunc = prel.getCluster().getRexBuilder().makeCall(sqlOpH, rex);
-          if ( prevRex != null ) {
-            rexFunc = prel.getCluster().getRexBuilder().makeCall(sqlOpX, prevRex, rexFunc);
-          }
-          prevRex = rexFunc;
-        }
-        List <RexNode> updatedExpr = Lists.newArrayList();
-        for ( RelDataTypeField field : child.getRowType().getFieldList()) {
-          RexNode rex = prel.getCluster().getRexBuilder().makeInputRef(field.getType(), field.getIndex());
-          updatedExpr.add(rex);
-        }
-        outputFieldNames.add("EXPRHASH");
-
-        updatedExpr.add(prevRex);
-        RelDataType rowType = RexUtil.createStructType(prel.getCluster().getTypeFactory(), updatedExpr, outputFieldNames);
-
-        children.add(new ProjectPrel(child.getCluster(), child.getTraitSet(), child, updatedExpr, rowType));
-      }
-
-    }
-
-    return (Prel) prel.copy(prel.getTraitSet(), children);
-
-  }
-*/
 }

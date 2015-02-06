@@ -75,7 +75,20 @@ public class OperatorStats {
     processingMark = original.processingMark;
     setupMark = original.setupMark;
     waitMark = original.waitMark;
+  }
 
+  public OperatorStats(OperatorStats original, boolean isClean) {
+    this(original.operatorId, original.operatorType, original.inputCount, original.allocator);
+
+    if ( !isClean ) {
+      inProcessing = original.inProcessing;
+      inSetup = original.inSetup;
+      inWait = original.inWait;
+
+      processingMark = original.processingMark;
+      setupMark = original.setupMark;
+      waitMark = original.waitMark;
+    }
   }
 
   private OperatorStats(int operatorId, int operatorType, int inputCount, BufferAllocator allocator) {
@@ -99,10 +112,10 @@ public class OperatorStats {
    * @param from - OperatorStats from where to merge to "this"
    * @return OperatorStats - for convenience so one can merge multiple stats in one go
    */
-  public OperatorStats mergeStats(OperatorStats from) {
-    processingNanos +=from.processingNanos;
-    setupNanos += from.setupNanos;
-    waitNanos += from.waitNanos;
+  public OperatorStats mergeMetrics(OperatorStats from) {
+    //processingNanos +=from.processingNanos;
+    //setupNanos += from.setupNanos;
+    //waitNanos += from.waitNanos;
     for ( int i : from.longMetrics.keys) {
       longMetrics.putOrAdd(i, from.longMetrics.values[i], from.longMetrics.values[i]);
     }
@@ -235,6 +248,22 @@ public class OperatorStats {
 
   public void setDoubleStat(MetricDef metric, double value){
     doubleMetrics.put(metric.metricId(), value);
+  }
+
+  public long getWaitNanos() {
+    return waitNanos;
+  }
+
+  /**
+   * Adjust waitNanos based on client calculations
+   * @param waitNanos - could be negative as well as positive
+   */
+  public void adjustWaitNanos(long waitNanos) {
+    this.waitNanos += waitNanos;
+  }
+
+  public long getProcessingNanos() {
+    return processingNanos;
   }
 
 }
