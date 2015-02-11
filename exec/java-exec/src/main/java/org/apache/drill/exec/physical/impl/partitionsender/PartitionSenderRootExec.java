@@ -37,6 +37,7 @@ import org.apache.drill.exec.physical.MinorFragmentEndpoint;
 import org.apache.drill.exec.physical.config.HashPartitionSender;
 import org.apache.drill.exec.physical.impl.BaseRootExec;
 import org.apache.drill.exec.physical.impl.SendingAccountor;
+import org.apache.drill.exec.planner.physical.PlannerSettings;
 import org.apache.drill.exec.proto.ExecProtos.FragmentHandle;
 import org.apache.drill.exec.record.BatchSchema.SelectionVectorMode;
 import org.apache.drill.exec.record.FragmentWritableBatch;
@@ -72,7 +73,7 @@ public class PartitionSenderRootExec extends BaseRootExec {
 
   long minReceiverRecordCount = Long.MAX_VALUE;
   long maxReceiverRecordCount = Long.MIN_VALUE;
-  private static final int NUMBER_PARTITIONS = 2;
+  private final int numberPartitions;
 
   public enum Metric implements MetricDef {
     BATCHES_SENT,
@@ -101,6 +102,7 @@ public class PartitionSenderRootExec extends BaseRootExec {
     this.statusHandler = new StatusHandler(sendCount, context);
     this.remainingReceivers = new AtomicIntegerArray(outGoingBatchCount);
     this.remaingReceiverCount = new AtomicInteger(outGoingBatchCount);
+    this.numberPartitions =  context.getOptions().getOption(PlannerSettings.PARTITION_SENDER_THREADS.getOptionName()).num_val.intValue();
   }
 
   private boolean done() {
@@ -208,9 +210,9 @@ public class PartitionSenderRootExec extends BaseRootExec {
 
   private void createPartitioner() throws SchemaChangeException {
 
-    int actualPartitions = outGoingBatchCount > NUMBER_PARTITIONS ? NUMBER_PARTITIONS : 1;
+    int actualPartitions = outGoingBatchCount > numberPartitions ? numberPartitions : 1;
     Partitioner [] subPartitioners = new Partitioner[actualPartitions];
-    int divisor = (outGoingBatchCount/NUMBER_PARTITIONS == 0 ) ? 1 : outGoingBatchCount/NUMBER_PARTITIONS;
+    int divisor = (outGoingBatchCount/numberPartitions == 0 ) ? 1 : outGoingBatchCount/numberPartitions;
     for (int i = 0; i < actualPartitions; i++) {
       subPartitioners[i] = createSubPartitioner();
       // TODO how to distribute remainder better especially when it is high thread count

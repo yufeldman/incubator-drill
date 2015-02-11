@@ -48,6 +48,7 @@ public class PlannerSettings implements Context{
   public static final OptionValidator JOIN_ROW_COUNT_ESTIMATE_FACTOR = new RangeDoubleValidator("planner.join.row_count_estimate_factor", 0, 100, 1.0d);
   public static final OptionValidator MUX_EXCHANGE = new BooleanValidator("planner.enable_mux_exchange", true);
   public static final OptionValidator DEMUX_EXCHANGE = new BooleanValidator("planner.enable_demux_exchange", true);
+  public static final OptionValidator PARTITION_SENDER_THREADS = new LongValidator("planner.partitioner_sender_threads", 1);
   public static final OptionValidator PRODUCER_CONSUMER = new BooleanValidator("planner.add_producer_consumer", false);
   public static final OptionValidator PRODUCER_CONSUMER_QUEUE_SIZE = new LongValidator("planner.producer_consumer_queue_size", 10);
   public static final OptionValidator HASH_SINGLE_KEY = new BooleanValidator("planner.enable_hash_single_key", true);
