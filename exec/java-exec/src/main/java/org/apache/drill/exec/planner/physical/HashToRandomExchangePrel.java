@@ -22,6 +22,8 @@ import java.util.List;
 
 import net.hydromatic.linq4j.Ord;
 
+import org.apache.drill.common.expression.FieldReference;
+import org.apache.drill.common.expression.LogicalExpression;
 import org.apache.drill.exec.physical.base.PhysicalOperator;
 import org.apache.drill.exec.physical.config.HashToRandomExchange;
 import org.apache.drill.exec.planner.cost.DrillCostBase;
@@ -93,7 +95,13 @@ public class HashToRandomExchangePrel extends ExchangePrel {
       return childPOP;
     }
 
-    HashToRandomExchange g = new HashToRandomExchange(childPOP, PrelUtil.getHashExpression(this.fields, getChild().getRowType()));
+    final LogicalExpression colExpr;
+    if ( creator.getContext().getOptions().getOption(PlannerSettings.MUX_EXCHANGE.getOptionName()).bool_val) {
+      colExpr = new FieldReference("EXPRHASH");
+    } else {
+      colExpr = PrelUtil.getHashExpression(this.fields, getChild().getRowType());
+    }
+    HashToRandomExchange g = new HashToRandomExchange(childPOP, colExpr);
     return creator.addMetadata(this, g);
   }
 
